@@ -29,7 +29,12 @@ PFNGLGETPROGRAMIVPROC glad_glGetProgramiv = NULL;
 PFNGLGETPROGRAMINFOLOGPROC glad_glGetProgramInfoLog = NULL;
 PFNGLUSEPROGRAMPROC glad_glUseProgram = NULL;
 PFNGLDELETEPROGRAMPROC glad_glDeleteProgram = NULL;
+PFNGLGETUNIFORMLOCATIONPROC glad_glGetUniformLocation = NULL;
+PFNGLUNIFORMMATRIX4FVPROC glad_glUniformMatrix4fv = NULL;
+PFNGLUNIFORM3FPROC glad_glUniform3f = NULL;
+PFNGLUNIFORM1IPROC glad_glUniform1i = NULL;
 PFNGLDRAWARRAYSPROC glad_glDrawArrays = NULL;
+PFNGLENABLEPROC glad_glEnable = NULL;
 
 static int load_required(GLADloadfunc load)
 {
@@ -61,7 +66,12 @@ static int load_required(GLADloadfunc load)
     glad_glGetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)load("glGetProgramInfoLog");
     glad_glUseProgram = (PFNGLUSEPROGRAMPROC)load("glUseProgram");
     glad_glDeleteProgram = (PFNGLDELETEPROGRAMPROC)load("glDeleteProgram");
+    glad_glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)load("glGetUniformLocation");
+    glad_glUniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)load("glUniformMatrix4fv");
+    glad_glUniform3f = (PFNGLUNIFORM3FPROC)load("glUniform3f");
+    glad_glUniform1i = (PFNGLUNIFORM1IPROC)load("glUniform1i");
     glad_glDrawArrays = (PFNGLDRAWARRAYSPROC)load("glDrawArrays");
+    glad_glEnable = (PFNGLENABLEPROC)load("glEnable");
 
     return glad_glGetString
         && glad_glViewport
@@ -89,7 +99,12 @@ static int load_required(GLADloadfunc load)
         && glad_glGetProgramInfoLog
         && glad_glUseProgram
         && glad_glDeleteProgram
-        && glad_glDrawArrays;
+        && glad_glGetUniformLocation
+        && glad_glUniformMatrix4fv
+        && glad_glUniform3f
+        && glad_glUniform1i
+        && glad_glDrawArrays
+        && glad_glEnable;
 }
 
 int gladLoadGL(GLADloadfunc load)

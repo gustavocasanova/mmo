@@ -1,10 +1,10 @@
 # MMO Engine
 
-Custom 3D engine (C++20, OpenGL 3.3 Core) intended as the long-term base for a fantasy MMORPG. This repository does **not** use Unity, Unreal, or Godot.
+Engine 3D própria em C++20 para um MMORPG persistente de fantasia nórdica estilizada, com Valheim como referência visual de alto nível e assets/identidade originais. Sem Unity, Unreal ou Godot. O renderer é nosso; o primeiro backend usa OpenGL 3.3 Core.
 
-Current milestone: **Marco 001 — Fundação**.
+Current step: **Marco 003 — cena 3D e movimento local**. O cliente agora renderiza terreno e personagem em terceira pessoa, com movimentação WASD; ainda não há rede nem simulação autoritativa.
 
-The first binary is `mmo_client`. It opens a window, creates an OpenGL 3.3 Core context, compiles shaders, and draws a colored triangle.
+A arquitetura e as dependências planejadas estão em [docs/architecture.md](docs/architecture.md). A regra central é manter a simulação do servidor independente do cliente e da GPU.
 
 ## Prerequisites (Windows 11)
 
@@ -26,6 +26,16 @@ Set-ExecutionPolicy -Scope Process Bypass
 ```
 
 Then **close and reopen** the terminal.
+
+## VS Code
+
+Install the recommended extensions when VS Code prompts you. Open this folder, select the `vs2022-debug` CMake configure preset, configure, and build the `mmo_client` target. To run from PowerShell after the build:
+
+```powershell
+.\build\Debug\mmo_client.exe
+```
+
+The exact command-line configure/build steps below are useful when diagnosing CMake Tools errors.
 
 ### Visual Studio (if not using the script)
 
@@ -67,7 +77,7 @@ Version: whatever the vcpkg `glfw3` port resolves to when you bootstrap (typical
 - **Not using vcpkg `glad`:** that port is GLAD 1 (`glad/glad.h`).
 - **Impact:** static library `glad`, renderer-only. See `third_party/glad/README.md`.
 
-No other third-party libraries in Marco 001.
+GLM, networking, database, asset import, audio and test frameworks are intentionally deferred. See the architecture document for when to add them.
 
 ## Configure, build, run (PowerShell)
 
@@ -94,16 +104,17 @@ Close with the window chrome or **Escape**. The process should print `[app] shut
 
 ## Expected picture
 
-Dark gray-blue background (`RGB ≈ 0.07, 0.08, 0.10`). One large triangle: red-orange lower left, green lower right, blue top.
+Uma cena low-poly em terceira pessoa: personagem sobre terreno verde quadriculado, com câmera suavizada atrás do personagem. WASD movimenta em relação à orientação do personagem; ao manter W, a câmera retorna suavemente para trás dele. Scroll aproxima/afasta e arrastar com o botão direito orbita. A câmera respeita o chão plano, mas ainda não evita paredes ou árvores: o projeto não possui geometria de cenário nem sistema de colisores.
 
-The console should print OpenGL version, vendor, renderer, and GLSL version, then `[app] Marco 001 running`.
+The console should print OpenGL version, vendor, renderer, and GLSL version, then `[app] Marco 003 running`.
 
-## Marco 001 acceptance
+## Marco 003 acceptance
 
 - [ ] CMake configure succeeds with MSVC x64 and the vcpkg toolchain
 - [ ] `mmo_client` links without errors
-- [ ] A window titled `MMO Engine — Marco 001` appears
-- [ ] A colored triangle is visible
+- [ ] A window titled `MMO Engine - Marco 003` appears
+- [ ] A 3D ground plane and a controllable character are visible
+- [ ] WASD moves the character and animates its arms and legs
 - [ ] Resize still fills the framebuffer (viewport callback)
 - [ ] Escape or close destroys the context and returns 0
 - [ ] Console shows GL version **3.3** or higher in a **Core** context
@@ -121,9 +132,9 @@ The console should print OpenGL version, vendor, renderer, and GLSL version, the
 | Window opens then closes | Read `stderr`; an exception ran `fail()` |
 | Generator not Visual Studio 17 | Install VS 2022, not only Build Tools without CMake/MSVC |
 
-## Tests (Marco 001)
+## Tests
 
-There is no automated GPU test yet. The acceptance list above is the test. Marco 002 adds unit tests for non-GL code (strings, errors, time).
+There is no automated GPU test yet. The acceptance list above is checked by running the client and testing movement in the window.
 
 ## Git
 

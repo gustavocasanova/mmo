@@ -68,6 +68,9 @@ typedef ptrdiff_t GLsizeiptr;
 #define GL_RENDERER 0x1F01
 #define GL_VERSION 0x1F02
 #define GL_COLOR_BUFFER_BIT 0x00004000
+#define GL_DEPTH_BUFFER_BIT 0x00000100
+#define GL_DEPTH_TEST 0x0B71
+#define GL_CULL_FACE 0x0B44
 #define GL_FLOAT 0x1406
 #define GL_ARRAY_BUFFER 0x8892
 #define GL_STATIC_DRAW 0x88E4
@@ -112,7 +115,12 @@ typedef void (APIENTRYP PFNGLGETPROGRAMIVPROC)(GLuint program, GLenum pname, GLi
 typedef void (APIENTRYP PFNGLGETPROGRAMINFOLOGPROC)(GLuint program, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
 typedef void (APIENTRYP PFNGLUSEPROGRAMPROC)(GLuint program);
 typedef void (APIENTRYP PFNGLDELETEPROGRAMPROC)(GLuint program);
+typedef GLint (APIENTRYP PFNGLGETUNIFORMLOCATIONPROC)(GLuint program, const GLchar *name);
+typedef void (APIENTRYP PFNGLUNIFORMMATRIX4FVPROC)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
+typedef void (APIENTRYP PFNGLUNIFORM3FPROC)(GLint location, GLfloat v0, GLfloat v1, GLfloat v2);
+typedef void (APIENTRYP PFNGLUNIFORM1IPROC)(GLint location, GLint v0);
 typedef void (APIENTRYP PFNGLDRAWARRAYSPROC)(GLenum mode, GLint first, GLsizei count);
+typedef void (APIENTRYP PFNGLENABLEPROC)(GLenum cap);
 
 GLAPI PFNGLGETSTRINGPROC glad_glGetString;
 GLAPI PFNGLGETERRORPROC glad_glGetError;
@@ -142,7 +150,12 @@ GLAPI PFNGLGETPROGRAMIVPROC glad_glGetProgramiv;
 GLAPI PFNGLGETPROGRAMINFOLOGPROC glad_glGetProgramInfoLog;
 GLAPI PFNGLUSEPROGRAMPROC glad_glUseProgram;
 GLAPI PFNGLDELETEPROGRAMPROC glad_glDeleteProgram;
+GLAPI PFNGLGETUNIFORMLOCATIONPROC glad_glGetUniformLocation;
+GLAPI PFNGLUNIFORMMATRIX4FVPROC glad_glUniformMatrix4fv;
+GLAPI PFNGLUNIFORM3FPROC glad_glUniform3f;
+GLAPI PFNGLUNIFORM1IPROC glad_glUniform1i;
 GLAPI PFNGLDRAWARRAYSPROC glad_glDrawArrays;
+GLAPI PFNGLENABLEPROC glad_glEnable;
 
 #define glGetString glad_glGetString
 #define glGetError glad_glGetError
@@ -172,7 +185,12 @@ GLAPI PFNGLDRAWARRAYSPROC glad_glDrawArrays;
 #define glGetProgramInfoLog glad_glGetProgramInfoLog
 #define glUseProgram glad_glUseProgram
 #define glDeleteProgram glad_glDeleteProgram
+#define glGetUniformLocation glad_glGetUniformLocation
+#define glUniformMatrix4fv glad_glUniformMatrix4fv
+#define glUniform3f glad_glUniform3f
+#define glUniform1i glad_glUniform1i
 #define glDrawArrays glad_glDrawArrays
+#define glEnable glad_glEnable
 
 #ifdef __cplusplus
 }

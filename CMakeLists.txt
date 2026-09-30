@@ -35,7 +35,14 @@ set_target_properties(glad PROPERTIES
     C_STANDARD_REQUIRED ON)
 
 add_executable(mmo_client
-    src/main.cpp)
+    src/main.cpp
+    src/core/application.cpp
+    src/core/camera_controller.cpp
+    src/platform/window.cpp
+    src/renderer/renderer.cpp)
+
+target_include_directories(mmo_client PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 target_link_libraries(mmo_client PRIVATE
     glfw
