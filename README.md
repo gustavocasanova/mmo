@@ -2,7 +2,7 @@
 
 Engine 3D própria em C++20 para um MMORPG persistente de fantasia nórdica estilizada, com Valheim como referência visual de alto nível e assets/identidade originais. Sem Unity, Unreal ou Godot. O renderer é nosso; o primeiro backend usa OpenGL 3.3 Core.
 
-Current step: **Marco 003 — cena 3D e movimento local**. O cliente agora renderiza terreno e personagem em terceira pessoa, com movimentação WASD; ainda não há rede nem simulação autoritativa.
+**Etapa atual: Marco 003 — Mundo 3D.** A arquitetura do Marco 002 está implementada: Window, Renderer, Shader, Mesh, Material, Camera e GLM. O protótipo tem terreno, iluminação simples, personagem procedural, câmera em terceira pessoa e movimento WASD; faltam carregamento de modelos e texturas. Veja o [roadmap](docs/roadmap.md) e o [guia dos módulos](docs/modules.md). Ainda não há rede nem simulação autoritativa.
 
 A arquitetura e as dependências planejadas estão em [docs/architecture.md](docs/architecture.md). A regra central é manter a simulação do servidor independente do cliente e da GPU.
 
@@ -15,7 +15,7 @@ Install these before configuring CMake. This machine did not have them on PATH w
 | Git | Version control; cloning vcpkg | `winget install --id Git.Git -e --source winget` |
 | Visual Studio 2022 (MSVC) | C++20 compiler and Windows SDK | Workload **Desktop development with C++** |
 | CMake 3.21+ | Build | Comes with VS, or `winget install --id Kitware.CMake -e --source winget` |
-| vcpkg | GLFW | Clone as below |
+| vcpkg | GLFW e GLM | Clone as below |
 | GPU driver with OpenGL 3.3 | Runtime | Vendor driver |
 
 Optional helper script (installs Git, CMake, VS Community):
@@ -77,7 +77,7 @@ Version: whatever the vcpkg `glfw3` port resolves to when you bootstrap (typical
 - **Not using vcpkg `glad`:** that port is GLAD 1 (`glad/glad.h`).
 - **Impact:** static library `glad`, renderer-only. See `third_party/glad/README.md`.
 
-GLM, networking, database, asset import, audio and test frameworks are intentionally deferred. See the architecture document for when to add them.
+GLM já é usado para vetores, matrizes e câmera. Importação de modelos e texturas entra no Marco 003, rede no Marco 005 e banco de dados no Marco 006; essas integrações continuam pendentes.
 
 ## Configure, build, run (PowerShell)
 
@@ -108,7 +108,9 @@ Uma cena low-poly em terceira pessoa: personagem sobre terreno verde quadriculad
 
 The console should print OpenGL version, vendor, renderer, and GLSL version, then `[app] Marco 003 running`.
 
-## Marco 003 acceptance
+## Verificação do protótipo atual
+
+Esta lista verifica a cena existente; não representa o aceite completo dos Marcos 002 e 003, definido no [roadmap](docs/roadmap.md).
 
 - [ ] CMake configure succeeds with MSVC x64 and the vcpkg toolchain
 - [ ] `mmo_client` links without errors
@@ -134,7 +136,19 @@ The console should print OpenGL version, vendor, renderer, and GLSL version, the
 
 ## Tests
 
-There is no automated GPU test yet. The acceptance list above is checked by running the client and testing movement in the window.
+Há testes de movimento, itens, geometria/cena e câmera sem GPU, executados pelo CTest:
+
+```powershell
+cmake --build --preset vs2022-debug
+ctest --test-dir build -C Debug --output-on-failure
+```
+
+Para compilar e testar sem GLFW/OpenGL, configure um diretório separado
+com `-DMMO_BUILD_CLIENT=OFF`. GLM continua necessário; use a toolchain
+vcpkg ou uma instalação nativa descoberta pelo CMake. Depois compile
+esse diretório e execute `ctest --test-dir <diretorio> -C Debug --output-on-failure`.
+
+A verificação visual e de input na janela continua sendo manual.
 
 ## Git
 

@@ -1,31 +1,33 @@
-#include "core/application.hpp"
+#include "apps/client/application.hpp"
 
-#include "core/camera_controller.hpp"
+#include "scene/camera_controller.hpp"
 #include "platform/window.hpp"
 #include "renderer/renderer.hpp"
+#include "game/client/demo_scene.hpp"
+#include "game/characters/character.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdlib>
 #include <exception>
 #include <iostream>
 
-namespace mmo::core {
+namespace mmo::app {
 
 int run_application()
 {
     try {
         platform::GlfwRuntime glfw;
         platform::Window window(1280, 720, "MMO Engine - Marco 003");
-        renderer::Renderer renderer;
-        core::CameraController camera;
+        assets::MeshCatalog assets;
+        game::client::DemoScene scene(assets);
+        renderer::Renderer renderer(platform::Window::get_proc_address, assets);
+        scene::CameraController camera_controller;
+        scene::Camera camera;
+        game::characters::Character player;
+        const game::world::MovementBounds movement_bounds;
 
         std::cout << "[app] Marco 003 running. Use WASD to move; press Escape to exit.\n";
 
-        float player_x = 0.0f;
-        float player_z = 0.0f;
-        float player_yaw = 0.0f;
-        float walk_phase = 0.0f;
         double previous_time = window.time_seconds();
 
         while (!window.should_close()) {
@@ -43,8 +45,9 @@ int run_application()
             double mouse_delta_y = 0.0;
             double scroll_delta = 0.0;
             window.consume_mouse_input(mouse_delta_x, mouse_delta_y, scroll_delta);
-            camera.apply_input({mouse_delta_x, mouse_delta_y, scroll_delta,
-                camera_dragging, right_dragging}, player_yaw);
+            const float yaw_delta = camera_controller.apply_input(
+                {mouse_delta_x, mouse_delta_y, scroll_delta, camera_dragging});
+            if (right_dragging) player.rotate(yaw_delta);
 
             const double current_time = window.time_seconds();
             const float delta_seconds = std::clamp(
@@ -58,35 +61,17 @@ int run_application()
             if (window.key_pressed(platform::Key::A)) strafe_input -= 1.0f;
             if (window.key_pressed(platform::Key::D)) strafe_input += 1.0f;
 
-            float move_x = std::sin(player_yaw) * forward_input +
-                std::cos(player_yaw) * strafe_input;
-            float move_z = std::cos(player_yaw) * forward_input -
-                std::sin(player_yaw) * strafe_input;
-
-            const float move_length = std::sqrt(move_x * move_x + move_z * move_z);
-            if (move_length > 0.0f) {
-                move_x /= move_length;
-                move_z /= move_length;
-                constexpr float kMoveSpeed = 4.2f;
-                player_x = std::clamp(player_x + move_x * kMoveSpeed * delta_seconds,
-                    -36.0f, 36.0f);
-                player_z = std::clamp(player_z + move_z * kMoveSpeed * delta_seconds,
-                    -36.0f, 36.0f);
-                walk_phase += delta_seconds * 9.0f;
-            } else {
-                walk_phase = 0.0f;
-            }
+            player.update(delta_seconds, {forward_input, strafe_input}, movement_bounds);
 
             int framebuffer_width = 0;
             int framebuffer_height = 0;
             window.framebuffer_size(framebuffer_width, framebuffer_height);
-            const core::CameraPose camera_pose = camera.update(
-                delta_seconds, player_x, 0.0f, player_z, player_yaw,
-                forward_input > 0.0f && !camera_dragging);
-            renderer.render(framebuffer_width, framebuffer_height,
-                player_x, player_z, player_yaw, walk_phase,
-                {camera_pose.eye_x, camera_pose.eye_y, camera_pose.eye_z,
-                    camera_pose.focus_x, camera_pose.focus_y, camera_pose.focus_z});
+            const auto& position = player.position();
+            camera.set_pose(camera_controller.update(
+                delta_seconds, position.x, position.y, position.z, player.yaw(),
+                forward_input > 0.0f && !camera_dragging));
+            const auto draws = scene.update(delta_seconds, player);
+            renderer.render(framebuffer_width, framebuffer_height, camera, draws);
             window.swap_buffers();
         }
 

@@ -1,5 +1,7 @@
 # Arquitetura técnica
 
+O escopo e a ordem de entrega seguem o [roadmap](roadmap.md): Marco 002 — Arquitetura do renderizador; Marco 003 — Mundo 3D; Marco 004 — Personagens e combate; Marco 005 — Multiplayer; Marco 006 — Persistência; Marco 007 — Mundo persistente. Os componentes futuros abaixo são uma direção técnica, não funcionalidades já implementadas.
+
 ## Princípios
 
 - Construir primeiro um **monólito modular**: módulos bem delimitados, poucos processos e um único deploy de servidor. Microserviços prematuros aumentariam o custo operacional de uma equipe solo.
@@ -11,19 +13,19 @@
 
 ## Visão de componentes
 
-```text
-mmo_client
-  app -> core -> platform -> renderer
-                     |         |
-                     |      resources / scene / animation
-                     +-> input / audio / UI
-  game_client -> shared (regras determinísticas e protocolo)
-  network_client <-> gateway -> zone/instance
+A estrutura implementada e suas dependências estão no [guia de módulos](modules.md).
 
-mmo_server (sem dependência de GPU)
+```text
+mmo_client / apps/client (composição)
+  platform -> janela e input
+  game/characters + game/items + game/world -> domínio sem GPU
+  game/client -> representação visual -> scene + assets
+  renderer -> scene + assets + backend OpenGL
+
+mmo_server (planejado, sem dependência de GPU)
   auth/session -> gateway -> zone workers -> persistence
                                   |               |
-                                  +-- shared -----+-> PostgreSQL
+                                  +-- domínio ----+-> PostgreSQL
 ```
 
 Começar com `mmo_client` e um executável local. Depois, cliente e servidor passam a ser processos separados, mas continuam no mesmo repositório e compartilham apenas tipos/protocolos explicitamente neutros. O caminho para escala é particionar o mundo em zonas/instâncias e distribuir essas unidades entre processos; não tentar simular um mundo inteiro num único processo para sempre.
@@ -41,9 +43,10 @@ Validar a direção com uma cena pequena: terreno, rochas, árvores, água e um 
 | `core` | logging, tempo, configuração, IDs, erros | GLFW, OpenGL, regras de jogo |
 | `platform` | janela, eventos, input, filesystem/clock do SO | regras do mundo, recursos OpenGL |
 | `renderer` | dispositivo, buffers, shaders, materiais, render passes | gameplay, rede, banco |
-| `resources` | localizar, carregar, validar e cachear assets | API gráfica nos formatos de domínio |
+| `assets` | localizar, carregar, validar e cachear assets | API gráfica nos formatos de domínio |
 | `scene` | câmera, transformações, visibilidade e representação visual | autoridade de gameplay |
-| `game/shared` | tipos e regras determinísticas compartilháveis | renderer, SO, banco |
+| `game/characters`, `game/items`, `game/world` | estado e regras de domínio compartilháveis | renderer, platform, assets, banco |
+| `game/shared` (futuro) | protocolo e tipos de rede | renderer, SO, banco |
 | `game/client` | input, apresentação, predição e reconciliação | autoridade persistente |
 | `game/server` | simulação autoritativa, validações, zonas e sistemas | qualquer biblioteca de cliente |
 | `network` | transporte, sessão, serialização e versionamento | tipos OpenGL/GLFW |
@@ -62,9 +65,9 @@ src/
   core/                    # logging, clock, config, IDs
   platform/                # window, input, filesystem
   renderer/
-    renderer.hpp           # API usada por core/app; sem tipos GL
+    renderer.hpp           # API usada por apps/client; sem tipos GL
     opengl/                # implementação OpenGL e shaders
-  resources/               # asset catalog, loaders, cache
+  assets/                  # dados CPU, catálogo e geometria; loaders futuros
   math/                    # convenções próprias sobre GLM
   scene/                   # câmera, transform e visibilidade
   animation/
@@ -72,7 +75,10 @@ src/
   network/                 # transporte e codecs
   persistence/             # PostgreSQL e migrations
   game/
-    shared/                # protocolo e regras comuns
+    characters/            # estado e movimento
+    items/                 # definições e pilhas de itens
+    world/                 # limites e regras do mundo
+    shared/                # protocolo futuro
     client/                # apresentação e predição
     server/                # autoridade e simulação
   tools/                   # importadores/validadores
@@ -91,7 +97,7 @@ ops/
 docs/
 ```
 
-Criar diretórios e bibliotecas apenas quando houver código para eles. O primeiro passo usa `src/core`, `src/platform` e `src/renderer`; essa estrutura pequena é deliberada.
+Criar diretórios e bibliotecas apenas quando houver código para eles. A árvore acima inclui módulos futuros; o guia de módulos distingue o que já foi implementado. `core` não contém a aplicação nem regras de jogo; sua criação fica reservada a utilitários compartilhados concretos.
 
 ## Dependências por fase
 
@@ -99,10 +105,11 @@ Criar diretórios e bibliotecas apenas quando houver código para eles. O primei
 
 | Dependência | Uso | Origem |
 | --- | --- | --- |
-| C++20 / MSVC | linguagem e compilador no Windows | Visual Studio 2022 |
-| CMake 3.21+ | configuração e build | instalado no Windows |
-| vcpkg | dependências C++ reproduzíveis | instalação do usuário |
-| GLFW 3 | janela, contexto e input inicial | port `glfw3` |
+| C++20 / MSVC ou GCC | linguagem e compilador | Visual Studio 2022 / GCC no Linux |
+| CMake 3.21+ | configuração e build | Windows e Linux |
+| vcpkg | dependências no Windows | manifesto; baseline ainda não fixada |
+| GLFW 3 | janela, contexto e input inicial | vcpkg ou Fedora |
+| GLM | matemática CPU, transformações e câmera | vcpkg ou Fedora |
 | GLAD 2 | carregar OpenGL 3.3 Core | código vendorizado em `third_party/glad` |
 | OpenGL | API gráfica do renderer atual | driver; `opengl32` no Windows |
 
@@ -110,7 +117,6 @@ Criar diretórios e bibliotecas apenas quando houver código para eles. O primei
 
 | Dependência candidata | Introduzir para | Observação |
 | --- | --- | --- |
-| GLM | câmera, transformações e projeções | convenções de coordenadas definidas antes de espalhar tipos |
 | Catch2 | testes unitários/integrados | teste de regras sem janela/GPU |
 | spdlog | logging estruturado e sinks | antes de multiplicar executáveis |
 | nlohmann-json | config e ferramentas | não usar JSON no tráfego frequente de gameplay |
@@ -143,8 +149,12 @@ Plano de validação incremental: clientes reais para a experiência e bots dete
 
 ## Ambiente de desenvolvimento e distribuição
 
-Desenvolver o cliente no Windows 11/VS 2022 x64. Planejar o servidor para Linux desde a separação do primeiro executável, com build/teste Linux em CI antes de produção. Conteúdo artístico passa por pipeline Blender -> formato de intercâmbio -> validação/cook -> runtime; manter fontes e derivados separados.
+O fluxo compartilhado de desenvolvimento do cliente usa Windows 11/VS 2022 x64. O CMake aceita compiladores e dependências nativas compatíveis; presets pessoais ficam em CMakeUserPresets.json, fora do Git. Planejar o servidor para Linux desde a separação do primeiro executável, com build/teste Linux em CI antes de produção. Conteúdo artístico passa por pipeline Blender -> formato de intercâmbio -> validação/cook -> runtime; manter fontes e derivados separados.
 
 ## Estado executável atual
 
-`mmo_client` abre uma janela OpenGL 3.3 Core e renderiza um terreno quadriculado e personagem low-poly com câmera orbital suavizada atrás do personagem. `CameraController` concentra sensibilidade, zoom, foco, elevação e suavização; `Application` move o personagem no referencial do próprio yaw e pede o retorno da câmera para trás ao caminhar para frente; `Window` encapsula GLFW, captura do mouse e perda de foco; `Renderer` desenha a pose visual separada do personagem. A câmera evita atravessar o plano do chão. Ainda não há geometria de cenário, colliders ou raycast para bloquear paredes/árvores; essa proteção depende de um sistema futuro de colisão de mundo. A simulação autoritativa, rede e servidor também não existem.
+Os componentes do Marco 002 estão implementados. Shader e Mesh cuidam dos recursos GPU; Material e Camera descrevem a cena; GLM fornece a matemática. Assets têm dados CPU e catálogo próprios. Character encapsula o movimento, e CharacterVisual monta e anima sua representação. ItemDefinition e ItemStack estabelecem o domínio de itens, ainda sem inventário ou itens visíveis.
+
+`mmo_client` abre uma janela OpenGL 3.3 Core e renderiza o protótipo de terreno quadriculado e personagem em terceira pessoa. CameraController controla órbita e suavização; a aplicação conecta input, personagem, câmera e cena; Window encapsula GLFW; Renderer recebe DrawItems e não conhece jogadores ou itens.
+
+Ainda não há carregamento de modelos/texturas, colisores de cenário, combate, rede, servidor ou persistência. A proteção de câmera continua limitada ao chão plano. Build headless e testes CPU verificam os módulos sem GLFW/GLAD/OpenGL; isso ainda não constitui um servidor dedicado.

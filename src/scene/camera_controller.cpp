@@ -1,9 +1,9 @@
-#include "core/camera_controller.hpp"
+#include "scene/camera_controller.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace mmo::core {
+namespace mmo::scene {
 namespace {
 
 constexpr float kPi = 3.14159265f;
@@ -51,15 +51,13 @@ CameraController::CameraController(CameraSettings settings)
     target_distance_ = settings_.initial_distance;
 }
 
-void CameraController::apply_input(const CameraInput& input, float& player_yaw)
+float CameraController::apply_input(const CameraInput& input)
 {
+    float yaw_delta = 0.0f;
     if (input.rotate_camera) {
-        const float yaw_delta = -static_cast<float>(input.mouse_delta_x) *
+        yaw_delta = -static_cast<float>(input.mouse_delta_x) *
             settings_.horizontal_sensitivity;
         desired_camera_yaw_ = wrap_angle(desired_camera_yaw_ + yaw_delta);
-        if (input.rotate_character) {
-            player_yaw = wrap_angle(player_yaw + yaw_delta);
-        }
 
         const float vertical_direction = settings_.invert_vertical ? 1.0f : -1.0f;
         elevation_ = std::clamp(
@@ -73,6 +71,7 @@ void CameraController::apply_input(const CameraInput& input, float& player_yaw)
         target_distance_ - static_cast<float>(input.scroll_delta) * settings_.zoom_speed,
         settings_.minimum_distance,
         settings_.maximum_distance);
+    return yaw_delta;
 }
 
 CameraPose CameraController::update(
