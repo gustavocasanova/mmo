@@ -1,13 +1,13 @@
 #pragma once
 
-#include "renderer/mesh.hpp"
+#include "assets/mesh_data.hpp"
 
 #include <array>
 #include <cstddef>
 #include <string>
 #include <vector>
 
-namespace mmo::renderer {
+namespace mmo::game::client {
 
 enum class EquipmentSlot : std::size_t {
     Helmet,
@@ -53,6 +53,6 @@ struct CharacterEquipment {
 };
 
 CharacterEquipment make_default_character_equipment();
-std::vector<MeshVertex> make_character_vertices(const CharacterEquipment& equipment);
+std::vector<assets::Vertex> make_character_vertices(const CharacterEquipment& equipment);
 
 }

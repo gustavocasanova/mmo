@@ -1,9 +1,9 @@
-#include "renderer/character.hpp"
+#include "game/client/equipment_visual.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace mmo::renderer {
+namespace mmo::game::client {
 namespace {
 
 using Point = std::array<float, 3>;
@@ -44,7 +44,7 @@ Point normalize(Point value)
     return {value[0] / length, value[1] / length, value[2] / length};
 }
 
-void append_triangle(std::vector<MeshVertex>& vertices, Point first, Point second,
+void append_triangle(std::vector<assets::Vertex>& vertices, Point first, Point second,
     Point third, Color color)
 {
     const Point normal = normalize(cross(subtract(second, first), subtract(third, first)));
@@ -56,14 +56,14 @@ void append_triangle(std::vector<MeshVertex>& vertices, Point first, Point secon
         {color[0], color[1], color[2]}});
 }
 
-void append_quad(std::vector<MeshVertex>& vertices, Point first, Point second,
+void append_quad(std::vector<assets::Vertex>& vertices, Point first, Point second,
     Point third, Point fourth, Color color)
 {
     append_triangle(vertices, first, second, third, color);
     append_triangle(vertices, first, third, fourth, color);
 }
 
-void append_ellipsoid(std::vector<MeshVertex>& vertices, Point center, Point radii,
+void append_ellipsoid(std::vector<assets::Vertex>& vertices, Point center, Point radii,
     Color color, int slices = 10, int stacks = 6)
 {
     for (int stack = 0; stack < stacks; ++stack) {
@@ -89,7 +89,7 @@ void append_ellipsoid(std::vector<MeshVertex>& vertices, Point center, Point rad
     }
 }
 
-void append_box(std::vector<MeshVertex>& vertices, Point center, Point half_size, Color color)
+void append_box(std::vector<assets::Vertex>& vertices, Point center, Point half_size, Color color)
 {
     const float x0 = center[0] - half_size[0];
     const float x1 = center[0] + half_size[0];
@@ -127,7 +127,7 @@ Point armor_scale(const EquipmentItem& item, Point scale)
     return {scale[0] * multiplier, scale[1] * multiplier, scale[2] * multiplier};
 }
 
-void append_ring(std::vector<MeshVertex>& vertices, Point center, float major_radius,
+void append_ring(std::vector<assets::Vertex>& vertices, Point center, float major_radius,
     float minor_radius, Color color, bool facing_side)
 {
     constexpr int kSegments = 8;
@@ -201,9 +201,9 @@ CharacterEquipment make_default_character_equipment()
     return equipment;
 }
 
-std::vector<MeshVertex> make_character_vertices(const CharacterEquipment& equipment)
+std::vector<assets::Vertex> make_character_vertices(const CharacterEquipment& equipment)
 {
-    std::vector<MeshVertex> vertices;
+    std::vector<assets::Vertex> vertices;
     vertices.reserve(5000);
 
     append_ellipsoid(vertices, {0.0f, 1.12f, 0.0f}, {0.235f, 0.32f, 0.145f}, kSkin);

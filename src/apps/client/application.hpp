@@ -1,6 +1,6 @@
 #pragma once
 
-namespace mmo::core {
+namespace mmo::app {
 
 int run_application();
 

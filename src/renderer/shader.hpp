@@ -1,29 +1,30 @@
 #pragma once
-
-#include <glm/mat4x4.hpp>
-#include <glm/vec3.hpp>
-
+#include "math/transform.hpp"
+#include "scene/material.hpp"
 #include <span>
-#include <string_view>
-
+#include <array>
 namespace mmo::renderer {
-
+// Owns a GPU program; construction and destruction require the current context.
 class Shader {
 public:
-    Shader(std::string_view vertex_source, std::string_view fragment_source);
+    Shader();
+    ~Shader();
     Shader(const Shader&) = delete;
     Shader& operator=(const Shader&) = delete;
-    ~Shader();
-
     void bind() const;
-    void set_mat4(const char* name, const glm::mat4& value) const;
-    void set_mat4_array(const char* name, std::span<const glm::mat4> values) const;
-    void set_vec3(const char* name, const glm::vec3& value) const;
-    void set_int(const char* name, int value) const;
-
+    void set_matrices(const math::Mat4&, const math::Mat4&, const math::Mat4&) const;
+    void set_tint(math::Vec3) const;
+    void set_pattern(scene::SurfacePattern) const;
+    void set_skinning(std::span<const math::Mat4> matrices) const;
 private:
-    int uniform_location(const char* name) const;
     unsigned int id_ = 0;
+    int projection_location_ = -1;
+    int view_location_ = -1;
+    int model_location_ = -1;
+    int tint_location_ = -1;
+    int pattern_location_ = -1;
+    std::array<int, 3> normal_locations_{};
+    int skinning_location_ = -1;
+    int skinned_location_ = -1;
 };
-
 }

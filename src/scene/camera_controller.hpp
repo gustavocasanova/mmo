@@ -1,6 +1,7 @@
 #pragma once
+#include "scene/camera.hpp"
 
-namespace mmo::core {
+namespace mmo::scene {
 
 struct CameraSettings {
     float horizontal_sensitivity = 0.005f;
@@ -24,23 +25,13 @@ struct CameraInput {
     double mouse_delta_y = 0.0;
     double scroll_delta = 0.0;
     bool rotate_camera = false;
-    bool rotate_character = false;
-};
-
-struct CameraPose {
-    float eye_x;
-    float eye_y;
-    float eye_z;
-    float focus_x;
-    float focus_y;
-    float focus_z;
 };
 
 class CameraController {
 public:
     explicit CameraController(CameraSettings settings = {});
 
-    void apply_input(const CameraInput& input, float& player_yaw);
+    float apply_input(const CameraInput& input);
     CameraPose update(
         float delta_seconds,
         float player_x,

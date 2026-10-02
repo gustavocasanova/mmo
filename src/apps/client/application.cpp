@@ -1,31 +1,37 @@
-#include "core/application.hpp"
+#include "apps/client/application.hpp"
 
-#include "core/camera_controller.hpp"
+#include "scene/camera_controller.hpp"
 #include "platform/window.hpp"
 #include "renderer/renderer.hpp"
+#include "game/client/demo_scene.hpp"
+#include "game/characters/character.hpp"
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstdlib>
 #include <exception>
 #include <iostream>
 
-namespace mmo::core {
+namespace mmo::app {
 
 int run_application()
 {
     try {
         platform::GlfwRuntime glfw;
         platform::Window window(1280, 720, "MMO Engine - Character Equipment Test");
-        renderer::Renderer renderer;
-        core::CameraController camera;
+        assets::MeshCatalog assets;
+        game::client::DemoScene scene(assets);
+        renderer::Renderer renderer(platform::Window::get_proc_address, assets);
+        scene::CameraController camera_controller;
+        scene::Camera camera;
+        game::characters::Character player;
+        const game::world::MovementBounds movement_bounds;
 
         std::cout << "[app] Character Equipment Test running. WASD move; Escape exits.\n"
             << "[demo] 1 helmet, 2 shoulders, 3 chest, 4 gloves, 5 pants, 6 boots,\n"
             << "       7 cloak, 8 bracers, 9 rings/earrings, T palette, 0 reset.\n";
 
-        renderer::CharacterEquipment demo_equipment = renderer::make_default_character_equipment();
+        game::client::CharacterEquipment demo_equipment = game::client::make_default_character_equipment();
         constexpr std::array<platform::Key, 11> demo_keys{
             platform::Key::Digit1, platform::Key::Digit2, platform::Key::Digit3,
             platform::Key::Digit4, platform::Key::Digit5, platform::Key::Digit6,
@@ -35,9 +41,6 @@ int run_application()
         std::array<bool, demo_keys.size()> was_pressed{};
         std::size_t palette = 0;
 
-        float player_x = 0.0f;
-        float player_z = 0.0f;
-        float player_yaw = 0.0f;
         double previous_time = window.time_seconds();
 
         while (!window.should_close()) {
@@ -55,7 +58,7 @@ int run_application()
                 }
 
                 if (key_index == 9) {
-                    demo_equipment = renderer::make_default_character_equipment();
+                    demo_equipment = game::client::make_default_character_equipment();
                     palette = 0;
                     std::cout << "[demo] default equipment restored\n";
                 } else if (key_index == 10) {
@@ -68,7 +71,7 @@ int run_application()
                     palette = (palette + 1) % palettes.size();
                     for (std::size_t item_index = 0;
                          item_index < demo_equipment.items.size(); ++item_index) {
-                        renderer::EquipmentItem& item = demo_equipment.items[item_index];
+                        game::client::EquipmentItem& item = demo_equipment.items[item_index];
                         if (item.equipped) {
                             item.color = palettes[(palette + item_index) % palettes.size()];
                         }
@@ -79,41 +82,42 @@ int run_application()
                         "helmet", "shoulders", "chest", "gloves", "pants",
                         "boots", "cloak", "bracers", "rings and earrings",
                     };
-                    const auto toggle = [&demo_equipment](renderer::EquipmentSlot slot) {
+                    const auto toggle = [&demo_equipment](game::client::EquipmentSlot slot) {
                         demo_equipment[slot].equipped = !demo_equipment[slot].equipped;
                     };
                     switch (key_index) {
-                    case 0: toggle(renderer::EquipmentSlot::Helmet); break;
+                    case 0: toggle(game::client::EquipmentSlot::Helmet); break;
                     case 1:
-                        toggle(renderer::EquipmentSlot::ShoulderLeft);
-                        toggle(renderer::EquipmentSlot::ShoulderRight);
+                        toggle(game::client::EquipmentSlot::ShoulderLeft);
+                        toggle(game::client::EquipmentSlot::ShoulderRight);
                         break;
-                    case 2: toggle(renderer::EquipmentSlot::Chest); break;
+                    case 2: toggle(game::client::EquipmentSlot::Chest); break;
                     case 3:
-                        toggle(renderer::EquipmentSlot::GloveLeft);
-                        toggle(renderer::EquipmentSlot::GloveRight);
+                        toggle(game::client::EquipmentSlot::GloveLeft);
+                        toggle(game::client::EquipmentSlot::GloveRight);
                         break;
-                    case 4: toggle(renderer::EquipmentSlot::Pants); break;
+                    case 4: toggle(game::client::EquipmentSlot::Pants); break;
                     case 5:
-                        toggle(renderer::EquipmentSlot::BootLeft);
-                        toggle(renderer::EquipmentSlot::BootRight);
+                        toggle(game::client::EquipmentSlot::BootLeft);
+                        toggle(game::client::EquipmentSlot::BootRight);
                         break;
-                    case 6: toggle(renderer::EquipmentSlot::Cape); break;
+                    case 6: toggle(game::client::EquipmentSlot::Cape); break;
                     case 7:
-                        toggle(renderer::EquipmentSlot::BracerLeft);
-                        toggle(renderer::EquipmentSlot::BracerRight);
+                        toggle(game::client::EquipmentSlot::BracerLeft);
+                        toggle(game::client::EquipmentSlot::BracerRight);
                         break;
                     case 8:
-                        for (std::size_t slot = static_cast<std::size_t>(renderer::EquipmentSlot::RingLeftIndex);
-                             slot < static_cast<std::size_t>(renderer::EquipmentSlot::Count); ++slot) {
-                            toggle(static_cast<renderer::EquipmentSlot>(slot));
+                        for (std::size_t slot = static_cast<std::size_t>(game::client::EquipmentSlot::RingLeftIndex);
+                             slot < static_cast<std::size_t>(game::client::EquipmentSlot::Count); ++slot) {
+                            toggle(static_cast<game::client::EquipmentSlot>(slot));
                         }
                         break;
                     default: break;
                     }
                     std::cout << "[demo] toggled " << labels[key_index] << '\n';
                 }
-                renderer.set_character_equipment(demo_equipment);
+                const auto mesh = scene.set_equipment(assets, demo_equipment);
+                renderer.update_mesh(mesh, assets.get(mesh));
             }
 
             const bool right_dragging = window.right_mouse_pressed();
@@ -125,8 +129,9 @@ int run_application()
             double mouse_delta_y = 0.0;
             double scroll_delta = 0.0;
             window.consume_mouse_input(mouse_delta_x, mouse_delta_y, scroll_delta);
-            camera.apply_input({mouse_delta_x, mouse_delta_y, scroll_delta,
-                camera_dragging, right_dragging}, player_yaw);
+            const float yaw_delta = camera_controller.apply_input(
+                {mouse_delta_x, mouse_delta_y, scroll_delta, camera_dragging});
+            if (right_dragging) player.rotate(yaw_delta);
 
             const double current_time = window.time_seconds();
             const float delta_seconds = std::clamp(
@@ -140,32 +145,17 @@ int run_application()
             if (window.key_pressed(platform::Key::A)) strafe_input -= 1.0f;
             if (window.key_pressed(platform::Key::D)) strafe_input += 1.0f;
 
-            float move_x = std::sin(player_yaw) * forward_input +
-                std::cos(player_yaw) * strafe_input;
-            float move_z = std::cos(player_yaw) * forward_input -
-                std::sin(player_yaw) * strafe_input;
-
-            const float move_length = std::sqrt(move_x * move_x + move_z * move_z);
-            if (move_length > 0.0f) {
-                move_x /= move_length;
-                move_z /= move_length;
-                constexpr float kMoveSpeed = 4.2f;
-                player_x = std::clamp(player_x + move_x * kMoveSpeed * delta_seconds,
-                    -36.0f, 36.0f);
-                player_z = std::clamp(player_z + move_z * kMoveSpeed * delta_seconds,
-                    -36.0f, 36.0f);
-            }
+            player.update(delta_seconds, {forward_input, strafe_input}, movement_bounds);
 
             int framebuffer_width = 0;
             int framebuffer_height = 0;
             window.framebuffer_size(framebuffer_width, framebuffer_height);
-            const core::CameraPose camera_pose = camera.update(
-                delta_seconds, player_x, 0.0f, player_z, player_yaw,
-                forward_input > 0.0f && !camera_dragging);
-            renderer.render(framebuffer_width, framebuffer_height,
-                player_x, player_z, player_yaw,
-                {camera_pose.eye_x, camera_pose.eye_y, camera_pose.eye_z,
-                    camera_pose.focus_x, camera_pose.focus_y, camera_pose.focus_z});
+            const auto& position = player.position();
+            camera.set_pose(camera_controller.update(
+                delta_seconds, position.x, position.y, position.z, player.yaw(),
+                forward_input > 0.0f && !camera_dragging));
+            const auto draws = scene.update(delta_seconds, player);
+            renderer.render(framebuffer_width, framebuffer_height, camera, draws);
             window.swap_buffers();
         }
 

@@ -33,10 +33,10 @@ Character -> CharacterModel -> CharacterBody -> model meshes + skeleton
 
 ## Aparência e câmera
 
-`CharacterAppearance` reserva dados simples para variante/cor do corpo, sem editor de criação. A câmera terceira pessoa continua em `core::CameraController`, separada de Character e CharacterModel; seguir/orbitar/zoom não pertencem ao asset.
+`CharacterAppearance` reserva dados simples para variante/cor do corpo, sem editor de criação. A câmera terceira pessoa continua em `scene::CameraController`, separada de Character e CharacterModel; seguir/orbitar/zoom não pertencem ao asset.
 
 ## Estado e limitações
 
-Não existe loader GLB/glTF conectado, upload de `assets::Model` para GPU, upload de textura ou personagem skinned real. O personagem visível ainda é um placeholder procedural do renderer. `CharacterEquipmentTest` valida contratos com dados sintéticos e permite alternar visualmente esse placeholder.
+Não existe loader GLB/glTF conectado, upload de `assets::Model` para GPU, upload de textura ou personagem skinned real. O personagem visível ainda é um placeholder procedural de game/client/equipment_visual. `CharacterEquipmentTest` valida contratos com dados sintéticos. A aplicação permite alternar visualmente esse placeholder com 1–9/T/0.
 
 O caminho planejado do corpo é `assets/characters/player/body/player_body.glb`. Esse arquivo não foi criado. Quando o asset autoral existir, implementar/adicionar um `ModelLoader` maduro, mapear os dados para `assets::Model` e integrar buffers e materiais ao renderer.

@@ -1,43 +1,25 @@
 #pragma once
-
-#include "animation/skeleton.hpp"
-#include "renderer/character.hpp"
-
+#include "assets/mesh_catalog.hpp"
+#include "scene/camera.hpp"
+#include "scene/draw_item.hpp"
 #include <memory>
 #include <span>
 
 namespace mmo::renderer {
-
-struct CameraView {
-    float eye_x;
-    float eye_y;
-    float eye_z;
-    float focus_x;
-    float focus_y;
-    float focus_z;
-};
-
+using GraphicsProc = void (*)();
+using GraphicsLoader = GraphicsProc (*)(const char*);
 class Renderer {
 public:
-    Renderer();
+    // Uploads a snapshot of this catalog. Draw IDs must come from that catalog.
+    Renderer(GraphicsLoader load, const assets::MeshCatalog& assets);
+    ~Renderer();
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
-    ~Renderer();
-
-    void set_character_equipment(const CharacterEquipment& equipment);
-    void set_skinning_matrices(std::span<const animation::Matrix4> matrices);
-
-    void render(
-        int framebuffer_width,
-        int framebuffer_height,
-        float player_x,
-        float player_z,
-        float player_yaw,
-        const CameraView& camera) const;
-
+    void update_mesh(assets::MeshId id, const assets::MeshData& data);
+    void render(int width, int height, const scene::Camera& camera,
+        std::span<const scene::DrawItem> items) const;
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
-
 }
