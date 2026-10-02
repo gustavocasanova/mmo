@@ -54,7 +54,7 @@ CameraController::CameraController(CameraSettings settings)
 void CameraController::apply_input(const CameraInput& input, float& player_yaw)
 {
     if (input.rotate_camera) {
-        const float yaw_delta = -static_cast<float>(input.mouse_delta_x) *
+        const float yaw_delta = static_cast<float>(input.mouse_delta_x) *
             settings_.horizontal_sensitivity;
         desired_camera_yaw_ = wrap_angle(desired_camera_yaw_ + yaw_delta);
         if (input.rotate_character) {

@@ -1,6 +1,6 @@
 {
   "cmake.configureOnOpen": true,
-  "cmake.preferredGenerators": ["Visual Studio 17 2022"],
+  "cmake.preferredGenerators": ["Visual Studio 18 2026"],
   "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
   "files.encoding": "utf8"
 }

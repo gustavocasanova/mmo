@@ -43,6 +43,10 @@ Validar a direção com uma cena pequena: terreno, rochas, árvores, água e um 
 | `renderer` | dispositivo, buffers, shaders, materiais, render passes | gameplay, rede, banco |
 | `resources` | localizar, carregar, validar e cachear assets | API gráfica nos formatos de domínio |
 | `scene` | câmera, transformações, visibilidade e representação visual | autoridade de gameplay |
+| `assets` | dados CPU de modelos, meshes, materiais, texturas e contrato de loader | OpenGL, GLFW, gameplay |
+| `animation` | bones, skeleton, clips, pose, controller e matrizes de skinning | renderer, gameplay, rede |
+| `character` | corpo visual, modelo do personagem, aparência e dados básicos separados | API OpenGL, inventário |
+| `equipment` | slots, itens visuais e attachments resolvidos contra o skeleton | renderer, inventário, banco |
 | `game/shared` | tipos e regras determinísticas compartilháveis | renderer, SO, banco |
 | `game/client` | input, apresentação, predição e reconciliação | autoridade persistente |
 | `game/server` | simulação autoritativa, validações, zonas e sistemas | qualquer biblioteca de cliente |
@@ -67,7 +71,7 @@ src/
   resources/               # asset catalog, loaders, cache
   math/                    # convenções próprias sobre GLM
   scene/                   # câmera, transform e visibilidade
-  animation/
+  animation/               # skeletons, poses and animation clips
   audio/
   network/                 # transporte e codecs
   persistence/             # PostgreSQL e migrations
@@ -103,6 +107,7 @@ Criar diretórios e bibliotecas apenas quando houver código para eles. O primei
 | CMake 3.21+ | configuração e build | instalado no Windows |
 | vcpkg | dependências C++ reproduzíveis | instalação do usuário |
 | GLFW 3 | janela, contexto e input inicial | port `glfw3` |
+| GLM | câmera, projeção e vetores do renderer | port `glm` |
 | GLAD 2 | carregar OpenGL 3.3 Core | código vendorizado em `third_party/glad` |
 | OpenGL | API gráfica do renderer atual | driver; `opengl32` no Windows |
 
@@ -110,7 +115,6 @@ Criar diretórios e bibliotecas apenas quando houver código para eles. O primei
 
 | Dependência candidata | Introduzir para | Observação |
 | --- | --- | --- |
-| GLM | câmera, transformações e projeções | convenções de coordenadas definidas antes de espalhar tipos |
 | Catch2 | testes unitários/integrados | teste de regras sem janela/GPU |
 | spdlog | logging estruturado e sinks | antes de multiplicar executáveis |
 | nlohmann-json | config e ferramentas | não usar JSON no tráfego frequente de gameplay |
@@ -122,6 +126,14 @@ Criar diretórios e bibliotecas apenas quando houver código para eles. O primei
 | miniaudio | áudio do cliente | só quando houver marco de áudio |
 
 Não instalar a lista futura toda agora. Fixar versões/ports no manifesto quando o código começar a consumir cada biblioteca.
+
+O alvo `mmo_character` contém assets, skeleton/animation, character e equipment sem links para GLFW, GLAD ou OpenGL. `mmo_client` usa essa biblioteca para a apresentação. O contrato `assets::ModelLoader` recebe caminhos `.glb`/`.gltf`, mas ainda não há implementação GLTF; nenhum parser próprio foi criado e nenhuma dependência de importação foi adicionada.
+
+`assets::Model` representa dados CPU. `renderer::Mesh` suporta vertices estáticos e quatro influências por vertex, e o vertex shader possui skinning com paleta de até 48 bones. O renderer ainda não converte automaticamente `assets::Model` em buffers, não carrega imagens e não faz upload/amostragem de texturas.
+
+O corpo base é um `CharacterBody` que referencia um model com skeleton. `CharacterModel` combina corpo, `AnimationController`, aparência e `EquipmentManager`. Equipment é dado independente por slot; `EquipmentManager::equip` valida o formato `.glb`/`.gltf`, attachments e bones antes de substituir o slot. Vários attachments por item cobrem peças bilaterais. O manager não carrega modelos nem chama OpenGL. `Character` mantém transform e stats mínimos.
+
+O personagem procedural existente é somente placeholder da cena interativa `Character Equipment Test`; ele não representa um asset final nem consome ainda os dados do `CharacterModel`. O CTest usa mesh, skeleton e animações sintéticos, sem inventar um arquivo GLB.
 
 ## Rede, simulação e persistência
 
@@ -147,4 +159,4 @@ Desenvolver o cliente no Windows 11/VS 2022 x64. Planejar o servidor para Linux 
 
 ## Estado executável atual
 
-`mmo_client` abre uma janela OpenGL 3.3 Core e renderiza um terreno quadriculado e personagem low-poly com câmera orbital suavizada atrás do personagem. `CameraController` concentra sensibilidade, zoom, foco, elevação e suavização; `Application` move o personagem no referencial do próprio yaw e pede o retorno da câmera para trás ao caminhar para frente; `Window` encapsula GLFW, captura do mouse e perda de foco; `Renderer` desenha a pose visual separada do personagem. A câmera evita atravessar o plano do chão. Ainda não há geometria de cenário, colliders ou raycast para bloquear paredes/árvores; essa proteção depende de um sistema futuro de colisão de mundo. A simulação autoritativa, rede e servidor também não existem.
+`mmo_client` abre uma janela OpenGL 3.3 Core e renderiza terreno quadriculado e placeholder procedural com câmera orbital suavizada. `CameraController` concentra sensibilidade, zoom, foco, elevação e suavização; `Application` controla movimento local e a cena interativa de teste de equipamento; `Window` encapsula GLFW, captura do mouse e perda de foco. A base de personagem/asset é CPU-only e testada com dados sintéticos. GLB/gltf ainda não é carregado em runtime, skinning ainda não foi demonstrado com um modelo real e texturas ainda não são enviadas à GPU. A câmera evita atravessar o plano do chão. Ainda não há geometria de cenário, colliders ou raycast para bloquear paredes/árvores; a simulação autoritativa, rede e servidor também não existem.

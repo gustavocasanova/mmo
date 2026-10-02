@@ -22,6 +22,17 @@ int glfw_key(Key key)
     case Key::A: return GLFW_KEY_A;
     case Key::S: return GLFW_KEY_S;
     case Key::D: return GLFW_KEY_D;
+    case Key::Digit0: return GLFW_KEY_0;
+    case Key::Digit1: return GLFW_KEY_1;
+    case Key::Digit2: return GLFW_KEY_2;
+    case Key::Digit3: return GLFW_KEY_3;
+    case Key::Digit4: return GLFW_KEY_4;
+    case Key::Digit5: return GLFW_KEY_5;
+    case Key::Digit6: return GLFW_KEY_6;
+    case Key::Digit7: return GLFW_KEY_7;
+    case Key::Digit8: return GLFW_KEY_8;
+    case Key::Digit9: return GLFW_KEY_9;
+    case Key::T: return GLFW_KEY_T;
     }
     return GLFW_KEY_UNKNOWN;
 }

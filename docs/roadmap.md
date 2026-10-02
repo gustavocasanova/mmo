@@ -4,13 +4,13 @@
 
 OpenGL 3.3 Core, shader, triângulo, resize e shutdown limpo. Critérios no README.
 
-## Marco 002 — Esqueleto modular (agora)
+## Marco 002 — Esqueleto modular (concluído)
 
 Separar aplicação, janela e renderer; manter a tela atual idêntica. Definir limites de módulo e configurar build/execução pelo CMake Presets no VS Code.
 
-## Marco 003 — Core testável e câmera
+## Marco 003 — Core, câmera e movimento local (atual)
 
-Clock, logging, matemática, câmera e input. Testes unitários não dependem de GPU.
+Cena 3D com terreno, personagem procedural, câmera em terceira pessoa e movimentação local. A cena de equipamento é um teste visual do renderer e não representa assets finais. A lógica CPU de personagem/equipamento continua coberta por testes sem GPU.
 
 ## Marco 004 — Protótipo visual autoral
 

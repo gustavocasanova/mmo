@@ -1,6 +1,10 @@
 #pragma once
 
+#include "animation/skeleton.hpp"
+#include "renderer/character.hpp"
+
 #include <memory>
+#include <span>
 
 namespace mmo::renderer {
 
@@ -20,13 +24,15 @@ public:
     Renderer& operator=(const Renderer&) = delete;
     ~Renderer();
 
+    void set_character_equipment(const CharacterEquipment& equipment);
+    void set_skinning_matrices(std::span<const animation::Matrix4> matrices);
+
     void render(
         int framebuffer_width,
         int framebuffer_height,
         float player_x,
         float player_z,
         float player_yaw,
-        float walk_phase,
         const CameraView& camera) const;
 
 private:

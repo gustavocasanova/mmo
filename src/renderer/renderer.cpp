@@ -1,15 +1,21 @@
 #include "renderer/renderer.hpp"
 
 #include "platform/window.hpp"
+#include "renderer/camera.hpp"
+#include "renderer/character.hpp"
+#include "renderer/material.hpp"
+#include "renderer/mesh.hpp"
+#include "renderer/shader.hpp"
 
 #include <glad/gl.h>
+#include <glm/gtc/type_ptr.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <iostream>
 #include <stdexcept>
-#include <string>
 #include <string_view>
 #include <vector>
 
@@ -26,6 +32,10 @@ struct Mat4 {
     std::array<float, 16> values{};
 };
 
+struct Mat3 {
+    std::array<float, 9> values{};
+};
+
 Mat4 identity_matrix()
 {
     Mat4 result;
@@ -33,6 +43,14 @@ Mat4 identity_matrix()
     result.values[5] = 1.0f;
     result.values[10] = 1.0f;
     result.values[15] = 1.0f;
+    return result;
+}
+
+Mat4 from_glm(const glm::mat4& matrix)
+{
+    Mat4 result;
+    const float* values = glm::value_ptr(matrix);
+    std::copy(values, values + 16, result.values.begin());
     return result;
 }
 
@@ -93,18 +111,6 @@ Mat4 rotation_y_matrix(float angle)
     return result;
 }
 
-Mat4 rotation_z_matrix(float angle)
-{
-    Mat4 result = identity_matrix();
-    const float cosine = std::cos(angle);
-    const float sine = std::sin(angle);
-    result.values[0] = cosine;
-    result.values[1] = sine;
-    result.values[4] = -sine;
-    result.values[5] = cosine;
-    return result;
-}
-
 Vec3 subtract(Vec3 left, Vec3 right)
 {
     return {left.x - right.x, left.y - right.y, left.z - right.z};
@@ -131,7 +137,47 @@ Vec3 cross(Vec3 left, Vec3 right)
 
 Vec3 normalize(Vec3 value)
 {
-    return multiply(value, 1.0f / std::sqrt(dot(value, value)));
+    const float length_squared = dot(value, value);
+    if (length_squared <= 0.000001f) {
+        return {0.0f, 0.0f, 0.0f};
+    }
+    return multiply(value, 1.0f / std::sqrt(length_squared));
+}
+
+Mat3 normal_matrix(const Mat4& model)
+{
+    const float a = model.values[0];
+    const float b = model.values[4];
+    const float c = model.values[8];
+    const float d = model.values[1];
+    const float e = model.values[5];
+    const float f = model.values[9];
+    const float g = model.values[2];
+    const float h = model.values[6];
+    const float i = model.values[10];
+    const float determinant = a * (e * i - f * h) -
+        b * (d * i - f * g) + c * (d * h - e * g);
+
+    if (std::abs(determinant) <= 0.000001f) {
+        Mat3 result;
+        result.values[0] = 1.0f;
+        result.values[4] = 1.0f;
+        result.values[8] = 1.0f;
+        return result;
+    }
+
+    const float inverse_determinant = 1.0f / determinant;
+    Mat3 result;
+    result.values[0] = (e * i - f * h) * inverse_determinant;
+    result.values[1] = (f * g - d * i) * inverse_determinant;
+    result.values[2] = (d * h - e * g) * inverse_determinant;
+    result.values[3] = (c * h - b * i) * inverse_determinant;
+    result.values[4] = (a * i - c * g) * inverse_determinant;
+    result.values[5] = (b * g - a * h) * inverse_determinant;
+    result.values[6] = (b * f - c * e) * inverse_determinant;
+    result.values[7] = (c * d - a * f) * inverse_determinant;
+    result.values[8] = (a * e - b * d) * inverse_determinant;
+    return result;
 }
 
 Mat4 perspective_matrix(float field_of_view, float aspect_ratio, float near_plane, float far_plane)
@@ -168,11 +214,7 @@ Mat4 look_at_matrix(Vec3 eye, Vec3 target, Vec3 up)
     return result;
 }
 
-struct Vertex {
-    float position[3];
-    float normal[3];
-    float color[3];
-};
+using Vertex = MeshVertex;
 
 void append_vertex(std::vector<Vertex>& vertices, Vec3 position, Vec3 normal, Vec3 color)
 {
@@ -200,43 +242,18 @@ void append_quad(
     append_vertex(vertices, fourth, normal, color);
 }
 
-std::vector<Vertex> make_cube_vertices()
-{
-    std::vector<Vertex> vertices;
-    vertices.reserve(36);
-    constexpr Vec3 color{1.0f, 1.0f, 1.0f};
-    append_quad(vertices, {-0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, 0.5f},
-        {0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, color);
-    append_quad(vertices, {0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f, -0.5f},
-        {-0.5f, 0.5f, -0.5f}, {0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, color);
-    append_quad(vertices, {0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, -0.5f},
-        {0.5f, 0.5f, -0.5f}, {0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}, color);
-    append_quad(vertices, {-0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f, 0.5f},
-        {-0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, color);
-    append_quad(vertices, {-0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f},
-        {0.5f, 0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, color);
-    append_quad(vertices, {-0.5f, -0.5f, -0.5f}, {0.5f, -0.5f, -0.5f},
-        {0.5f, -0.5f, 0.5f}, {-0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, color);
-    return vertices;
-}
-
 std::vector<Vertex> make_ground_vertices()
 {
     std::vector<Vertex> vertices;
-    constexpr int kGroundRadius = 48;
-    vertices.reserve(kGroundRadius * 2 * kGroundRadius * 2 * 6);
-    for (int cell_x = -kGroundRadius; cell_x < kGroundRadius; ++cell_x) {
-        for (int cell_z = -kGroundRadius; cell_z < kGroundRadius; ++cell_z) {
-            const float shade = (cell_x + cell_z) % 2 == 0 ? 0.92f : 1.0f;
-            const Vec3 color{shade, shade, shade};
-            append_quad(vertices,
-                {static_cast<float>(cell_x), 0.0f, static_cast<float>(cell_z)},
-                {static_cast<float>(cell_x), 0.0f, static_cast<float>(cell_z + 1)},
-                {static_cast<float>(cell_x + 1), 0.0f, static_cast<float>(cell_z + 1)},
-                {static_cast<float>(cell_x + 1), 0.0f, static_cast<float>(cell_z)},
-                {0.0f, 1.0f, 0.0f}, color);
-        }
-    }
+    vertices.reserve(6);
+    constexpr Vec3 normal{0.0f, 1.0f, 0.0f};
+    constexpr Vec3 color{1.0f, 1.0f, 1.0f};
+    append_quad(vertices,
+        {-48.0f, 0.0f, -48.0f},
+        {-48.0f, 0.0f, 48.0f},
+        {48.0f, 0.0f, 48.0f},
+        {48.0f, 0.0f, -48.0f},
+        normal, color);
     return vertices;
 }
 
@@ -244,17 +261,38 @@ constexpr char kVertexShaderSource[] = R"(#version 330 core
 layout (location = 0) in vec3 a_position;
 layout (location = 1) in vec3 a_normal;
 layout (location = 2) in vec3 a_color;
+layout (location = 3) in vec4 a_bone_indices;
+layout (location = 4) in vec4 a_bone_weights;
 out vec3 v_color;
 out vec3 v_normal;
 out vec3 v_world_position;
 uniform mat4 u_projection;
 uniform mat4 u_view;
 uniform mat4 u_model;
+uniform mat4 u_bone_matrices[48];
+uniform int u_is_skinned;
+uniform vec3 u_normal_column0;
+uniform vec3 u_normal_column1;
+uniform vec3 u_normal_column2;
 uniform vec3 u_tint;
 void main() {
-    vec4 world_position = u_model * vec4(a_position, 1.0);
+    mat4 skin = mat4(1.0);
+    if (u_is_skinned == 1) {
+        skin = mat4(0.0);
+        for (int influence = 0; influence < 4; ++influence) {
+            if (a_bone_weights[influence] > 0.0) {
+                int bone = int(a_bone_indices[influence]);
+                skin += u_bone_matrices[bone] * a_bone_weights[influence];
+            }
+        }
+    }
+    vec4 world_position = u_model * skin * vec4(a_position, 1.0);
     v_world_position = world_position.xyz;
-    v_normal = normalize(mat3(transpose(inverse(u_model))) * a_normal);
+    vec3 skinned_normal = mat3(skin) * a_normal;
+    v_normal = normalize(
+        u_normal_column0 * skinned_normal.x +
+        u_normal_column1 * skinned_normal.y +
+        u_normal_column2 * skinned_normal.z);
     v_color = a_color * u_tint;
     gl_Position = u_projection * u_view * world_position;
 }
@@ -273,226 +311,15 @@ void main() {
         vec3 grass = mix(vec3(0.22, 0.31, 0.18), vec3(0.27, 0.36, 0.22), checker);
         vec2 tile_uv = fract(v_world_position.xz);
         float edge = min(min(tile_uv.x, 1.0 - tile_uv.x), min(tile_uv.y, 1.0 - tile_uv.y));
-        surface_color = mix(vec3(0.16, 0.24, 0.14), grass, smoothstep(0.0, 0.035, edge)) * v_color;
+        float cell_shade = mix(0.92, 1.0, checker);
+        surface_color = mix(vec3(0.16, 0.24, 0.14), grass, smoothstep(0.0, 0.035, edge))
+            * v_color * cell_shade;
     }
     float diffuse = max(dot(normalize(v_normal), normalize(vec3(-0.4, 1.0, 0.3))), 0.0);
     float lighting = 0.38 + diffuse * 0.62;
     out_color = vec4(surface_color * lighting, 1.0);
 }
 )";
-
-std::string shader_info_log(unsigned int shader)
-{
-    int length = 0;
-    glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &length);
-    if (length <= 1) {
-        return {};
-    }
-
-    std::string log(static_cast<std::size_t>(length), '\0');
-    glGetShaderInfoLog(shader, length, nullptr, log.data());
-    if (!log.empty() && log.back() == '\0') {
-        log.pop_back();
-    }
-    return log;
-}
-
-std::string program_info_log(unsigned int program)
-{
-    int length = 0;
-    glGetProgramiv(program, GL_INFO_LOG_LENGTH, &length);
-    if (length <= 1) {
-        return {};
-    }
-
-    std::string log(static_cast<std::size_t>(length), '\0');
-    glGetProgramInfoLog(program, length, nullptr, log.data());
-    if (!log.empty() && log.back() == '\0') {
-        log.pop_back();
-    }
-    return log;
-}
-
-unsigned int compile_shader(unsigned int type, std::string_view source)
-{
-    const unsigned int shader = glCreateShader(type);
-    if (shader == 0) {
-        throw std::runtime_error("glCreateShader returned 0");
-    }
-
-    const char* source_data = source.data();
-    const int source_length = static_cast<int>(source.size());
-    glShaderSource(shader, 1, &source_data, &source_length);
-    glCompileShader(shader);
-
-    int compiled = GL_FALSE;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
-    if (compiled != GL_TRUE) {
-        const std::string log = shader_info_log(shader);
-        glDeleteShader(shader);
-        throw std::runtime_error("shader compile failed:\n" + log);
-    }
-    return shader;
-}
-
-unsigned int create_program(unsigned int vertex_shader, unsigned int fragment_shader)
-{
-    const unsigned int program = glCreateProgram();
-    if (program == 0) {
-        throw std::runtime_error("glCreateProgram returned 0");
-    }
-
-    glAttachShader(program, vertex_shader);
-    glAttachShader(program, fragment_shader);
-    glLinkProgram(program);
-
-    int linked = GL_FALSE;
-    glGetProgramiv(program, GL_LINK_STATUS, &linked);
-    if (linked != GL_TRUE) {
-        const std::string log = program_info_log(program);
-        glDeleteProgram(program);
-        throw std::runtime_error("program link failed:\n" + log);
-    }
-    return program;
-}
-
-class ShaderProgram {
-public:
-    ShaderProgram()
-    {
-        const unsigned int vertex_shader = compile_shader(GL_VERTEX_SHADER, kVertexShaderSource);
-        unsigned int fragment_shader = 0;
-        try {
-            fragment_shader = compile_shader(GL_FRAGMENT_SHADER, kFragmentShaderSource);
-            id_ = create_program(vertex_shader, fragment_shader);
-        } catch (...) {
-            glDeleteShader(vertex_shader);
-            if (fragment_shader != 0) {
-                glDeleteShader(fragment_shader);
-            }
-            throw;
-        }
-        glDeleteShader(vertex_shader);
-        glDeleteShader(fragment_shader);
-        projection_location_ = glGetUniformLocation(id_, "u_projection");
-        view_location_ = glGetUniformLocation(id_, "u_view");
-        model_location_ = glGetUniformLocation(id_, "u_model");
-        tint_location_ = glGetUniformLocation(id_, "u_tint");
-        ground_location_ = glGetUniformLocation(id_, "u_is_ground");
-    }
-
-    ShaderProgram(const ShaderProgram&) = delete;
-    ShaderProgram& operator=(const ShaderProgram&) = delete;
-
-    ~ShaderProgram()
-    {
-        if (id_ != 0) {
-            glDeleteProgram(id_);
-        }
-    }
-
-    void bind() const
-    {
-        glUseProgram(id_);
-    }
-
-    void set_matrices(const Mat4& projection, const Mat4& view, const Mat4& model) const
-    {
-        glUniformMatrix4fv(projection_location_, 1, GL_FALSE, projection.values.data());
-        glUniformMatrix4fv(view_location_, 1, GL_FALSE, view.values.data());
-        glUniformMatrix4fv(model_location_, 1, GL_FALSE, model.values.data());
-    }
-
-    void set_tint(Vec3 tint) const
-    {
-        glUniform3f(tint_location_, tint.x, tint.y, tint.z);
-    }
-
-    void set_ground(bool is_ground) const
-    {
-        glUniform1i(ground_location_, is_ground ? 1 : 0);
-    }
-
-private:
-    unsigned int id_ = 0;
-    int projection_location_ = -1;
-    int view_location_ = -1;
-    int model_location_ = -1;
-    int tint_location_ = -1;
-    int ground_location_ = -1;
-};
-
-class GpuMesh {
-public:
-    explicit GpuMesh(const std::vector<Vertex>& vertices)
-    {
-        glGenVertexArrays(1, &vao_);
-        glGenBuffers(1, &vbo_);
-        if (vao_ == 0 || vbo_ == 0) {
-            if (vbo_ != 0) glDeleteBuffers(1, &vbo_);
-            if (vao_ != 0) glDeleteVertexArrays(1, &vao_);
-            throw std::runtime_error("failed to allocate VAO/VBO");
-        }
-
-        glBindVertexArray(vao_);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-        glBufferData(GL_ARRAY_BUFFER,
-            static_cast<GLsizeiptr>(vertices.size() * sizeof(Vertex)),
-            vertices.data(), GL_STATIC_DRAW);
-
-        constexpr GLsizei stride = static_cast<GLsizei>(sizeof(Vertex));
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
-            reinterpret_cast<const void*>(offsetof(Vertex, normal)));
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, stride,
-            reinterpret_cast<const void*>(offsetof(Vertex, color)));
-        glEnableVertexAttribArray(2);
-        glBindVertexArray(0);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        vertex_count_ = static_cast<GLsizei>(vertices.size());
-    }
-
-    GpuMesh(const GpuMesh&) = delete;
-    GpuMesh& operator=(const GpuMesh&) = delete;
-
-    ~GpuMesh()
-    {
-        if (vbo_ != 0) {
-            glDeleteBuffers(1, &vbo_);
-        }
-        if (vao_ != 0) {
-            glDeleteVertexArrays(1, &vao_);
-        }
-    }
-
-    void draw() const
-    {
-        glBindVertexArray(vao_);
-        glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
-        glBindVertexArray(0);
-    }
-
-private:
-    unsigned int vao_ = 0;
-    unsigned int vbo_ = 0;
-    GLsizei vertex_count_ = 0;
-};
-
-Mat4 object_matrix(const Mat4& actor, Vec3 position, Vec3 size)
-{
-    return multiply(actor, multiply(translation_matrix(position), scale_matrix(size)));
-}
-
-Mat4 limb_matrix(const Mat4& actor, float pivot_x, float swing)
-{
-    const Mat4 pivot = translation_matrix({pivot_x, 1.63f, 0.0f});
-    const Mat4 rotation = multiply(rotation_z_matrix(pivot_x * 0.12f), rotation_x_matrix(swing));
-    const Mat4 center = translation_matrix({0.0f, -0.34f, 0.0f});
-    const Mat4 size = scale_matrix({0.22f, 0.70f, 0.25f});
-    return multiply(actor, multiply(pivot, multiply(rotation, multiply(center, size))));
-}
 
 void log_gl_info()
 {
@@ -510,9 +337,14 @@ void log_gl_info()
 }
 
 struct Renderer::Impl {
-    ShaderProgram program;
-    GpuMesh ground{make_ground_vertices()};
-    GpuMesh cube{make_cube_vertices()};
+    Camera camera;
+    Shader program{kVertexShaderSource, kFragmentShaderSource};
+    Mesh ground{make_ground_vertices()};
+    CharacterEquipment equipment{make_default_character_equipment()};
+    Mesh character{make_character_vertices(equipment)};
+    std::vector<glm::mat4> skinning_matrices;
+    Material ground_material{{1.0f, 1.0f, 1.0f}, true};
+    Material character_material{{1.0f, 1.0f, 1.0f}, false};
 };
 
 Renderer::Renderer()
@@ -529,13 +361,30 @@ Renderer::Renderer()
 
 Renderer::~Renderer() = default;
 
+void Renderer::set_character_equipment(const CharacterEquipment& equipment)
+{
+    impl_->equipment = equipment;
+    impl_->character.update(make_character_vertices(impl_->equipment));
+}
+
+void Renderer::set_skinning_matrices(std::span<const animation::Matrix4> matrices)
+{
+    if (matrices.size() > kMaxSkinningBones) {
+        throw std::length_error("OpenGL skinning palette exceeds the 48-bone limit");
+    }
+    impl_->skinning_matrices.clear();
+    impl_->skinning_matrices.reserve(matrices.size());
+    for (const animation::Matrix4& matrix : matrices) {
+        impl_->skinning_matrices.push_back(glm::make_mat4(matrix.data()));
+    }
+}
+
 void Renderer::render(
     int framebuffer_width,
     int framebuffer_height,
     float player_x,
     float player_z,
     float player_yaw,
-    float walk_phase,
     const CameraView& camera) const
 {
     if (framebuffer_width <= 0 || framebuffer_height <= 0) {
@@ -546,56 +395,42 @@ void Renderer::render(
     glClearColor(0.48f, 0.66f, 0.78f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     impl_->program.bind();
+    impl_->program.set_mat4_array("u_bone_matrices[0]", impl_->skinning_matrices);
 
-    const float aspect_ratio = static_cast<float>(framebuffer_width) /
-        static_cast<float>(framebuffer_height);
-    constexpr float kFieldOfView = 1.04719755f;
-    const Mat4 projection = perspective_matrix(kFieldOfView, aspect_ratio, 0.1f, 160.0f);
-    const Vec3 target{camera.focus_x, camera.focus_y, camera.focus_z};
-    const Vec3 eye{camera.eye_x, camera.eye_y, camera.eye_z};
-    const Mat4 view = look_at_matrix(eye, target, {0.0f, 1.0f, 0.0f});
+    impl_->camera.set_projection(framebuffer_width, framebuffer_height);
+    impl_->camera.set_view(
+        {camera.eye_x, camera.eye_y, camera.eye_z},
+        {camera.focus_x, camera.focus_y, camera.focus_z});
+    const Mat4 projection = from_glm(impl_->camera.projection_matrix());
+    const Mat4 view = from_glm(impl_->camera.view_matrix());
     const Mat4 ground_model = identity_matrix();
 
-    impl_->program.set_matrices(projection, view, ground_model);
-    impl_->program.set_tint({1.0f, 1.0f, 1.0f});
-    impl_->program.set_ground(true);
-    impl_->ground.draw();
-
-    const Mat4 actor = multiply(
-        translation_matrix({player_x, 0.0f, player_z}), rotation_y_matrix(player_yaw));
-    const auto draw_cube = [this, &projection, &view](const Mat4& model, Vec3 color) {
-        impl_->program.set_matrices(projection, view, model);
-        impl_->program.set_tint(color);
-        impl_->program.set_ground(false);
-        impl_->cube.draw();
+    const auto set_matrices = [this, &projection, &view](const Mat4& model) {
+        const Mat3 normal = normal_matrix(model);
+        impl_->program.set_mat4("u_projection", glm::make_mat4(projection.values.data()));
+        impl_->program.set_mat4("u_view", glm::make_mat4(view.values.data()));
+        impl_->program.set_mat4("u_model", glm::make_mat4(model.values.data()));
+        impl_->program.set_vec3("u_normal_column0",
+            {normal.values[0], normal.values[1], normal.values[2]});
+        impl_->program.set_vec3("u_normal_column1",
+            {normal.values[3], normal.values[4], normal.values[5]});
+        impl_->program.set_vec3("u_normal_column2",
+            {normal.values[6], normal.values[7], normal.values[8]});
     };
 
-    draw_cube(object_matrix(actor, {0.0f, 1.31f, 0.0f}, {0.56f, 0.86f, 0.38f}),
-        {0.27f, 0.43f, 0.42f});
-    draw_cube(object_matrix(actor, {0.0f, 0.96f, 0.0f}, {0.58f, 0.13f, 0.40f}),
-        {0.36f, 0.25f, 0.16f});
-    draw_cube(object_matrix(actor, {0.0f, 2.03f, 0.0f}, {0.46f, 0.48f, 0.43f}),
-        {0.77f, 0.57f, 0.39f});
-    draw_cube(object_matrix(actor, {0.0f, 2.23f, -0.015f}, {0.49f, 0.17f, 0.46f}),
-        {0.24f, 0.19f, 0.14f});
-    draw_cube(object_matrix(actor, {-0.105f, 2.08f, 0.218f}, {0.045f, 0.055f, 0.025f}),
-        {0.12f, 0.10f, 0.08f});
-    draw_cube(object_matrix(actor, {0.105f, 2.08f, 0.218f}, {0.045f, 0.055f, 0.025f}),
-        {0.12f, 0.10f, 0.08f});
+    set_matrices(ground_model);
+    impl_->program.set_int("u_is_skinned", 0);
+    impl_->ground_material.apply(impl_->program);
+    impl_->ground.draw();
 
-    const float leg_swing = std::sin(walk_phase) * 0.48f;
-    const Mat4 left_leg = multiply(actor, multiply(
-        translation_matrix({-0.16f, 0.89f, 0.0f}), multiply(rotation_x_matrix(leg_swing),
-            multiply(translation_matrix({0.0f, -0.42f, 0.0f}),
-                scale_matrix({0.26f, 0.84f, 0.31f})))));
-    const Mat4 right_leg = multiply(actor, multiply(
-        translation_matrix({0.16f, 0.89f, 0.0f}), multiply(rotation_x_matrix(-leg_swing),
-            multiply(translation_matrix({0.0f, -0.42f, 0.0f}),
-                scale_matrix({0.26f, 0.84f, 0.31f})))));
-    draw_cube(left_leg, {0.37f, 0.27f, 0.19f});
-    draw_cube(right_leg, {0.37f, 0.27f, 0.19f});
-    draw_cube(limb_matrix(actor, -0.39f, -leg_swing), {0.77f, 0.57f, 0.39f});
-    draw_cube(limb_matrix(actor, 0.39f, leg_swing), {0.77f, 0.57f, 0.39f});
+    const Mat4 character_model = multiply(
+        translation_matrix({player_x, 0.0f, player_z}),
+        rotation_y_matrix(player_yaw));
+    set_matrices(character_model);
+    impl_->program.set_int("u_is_skinned",
+        impl_->character.is_skinned() && !impl_->skinning_matrices.empty() ? 1 : 0);
+    impl_->character_material.apply(impl_->program);
+    impl_->character.draw();
 }
 
 }

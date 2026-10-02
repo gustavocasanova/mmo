@@ -2,7 +2,7 @@
 
 Engine 3D própria em C++20 para um MMORPG persistente de fantasia nórdica estilizada, com Valheim como referência visual de alto nível e assets/identidade originais. Sem Unity, Unreal ou Godot. O renderer é nosso; o primeiro backend usa OpenGL 3.3 Core.
 
-Current step: **Marco 003 — cena 3D e movimento local**. O cliente agora renderiza terreno e personagem em terceira pessoa, com movimentação WASD; ainda não há rede nem simulação autoritativa.
+Current step: **Marco 003 — cena 3D e movimento local**. O cliente renderiza terreno e um placeholder procedural de personagem em terceira pessoa, com movimentação WASD e a cena interativa `Character Equipment Test`; ainda não há rede nem simulação autoritativa.
 
 A arquitetura e as dependências planejadas estão em [docs/architecture.md](docs/architecture.md). A regra central é manter a simulação do servidor independente do cliente e da GPU.
 
@@ -29,10 +29,10 @@ Then **close and reopen** the terminal.
 
 ## VS Code
 
-Install the recommended extensions when VS Code prompts you. Open this folder, select the `vs2022-debug` CMake configure preset, configure, and build the `mmo_client` target. To run from PowerShell after the build:
+Install the recommended extensions when VS Code prompts you. Open this folder, select the configure preset matching the installed Visual Studio (`vs2022-debug` or `vs2026-debug`), configure, and build the `mmo_client` target. The VS2026 preset writes to `build-vs2026-marco001`; VS2022 writes to `build`. To run the installed VS2026 build from PowerShell:
 
 ```powershell
-.\build\Debug\mmo_client.exe
+.\build-vs2026-marco001\Debug\mmo_client.exe
 ```
 
 The exact command-line configure/build steps below are useful when diagnosing CMake Tools errors.
@@ -77,7 +77,7 @@ Version: whatever the vcpkg `glfw3` port resolves to when you bootstrap (typical
 - **Not using vcpkg `glad`:** that port is GLAD 1 (`glad/glad.h`).
 - **Impact:** static library `glad`, renderer-only. See `third_party/glad/README.md`.
 
-GLM, networking, database, asset import, audio and test frameworks are intentionally deferred. See the architecture document for when to add them.
+GLM is used for renderer camera math. Networking, database, GLB/glTF loader, GPU texture upload and audio remain deferred. CPU tests use CTest and synthetic model data; no test framework or asset parser was added.
 
 ## Configure, build, run (PowerShell)
 
@@ -85,10 +85,13 @@ From the repository root (`C:\Users\gugug\Desktop\mmo`):
 
 ```powershell
 $env:VCPKG_ROOT = "$env:USERPROFILE\vcpkg"   # skip if already set
-cmake --preset vs2022-debug
-cmake --build --preset vs2022-debug
-.\build\Debug\mmo_client.exe
+cmake --preset vs2026-debug
+cmake --build --preset vs2026-debug
+ctest --test-dir build-vs2026-marco001 -C Debug --output-on-failure
+\.\build-vs2026-marco001\Debug\mmo_client.exe
 ```
+
+For a Visual Studio 2022 installation, use `vs2022-debug` instead; that preset uses `build/`.
 
 Equivalent without presets:
 
@@ -104,17 +107,19 @@ Close with the window chrome or **Escape**. The process should print `[app] shut
 
 ## Expected picture
 
-Uma cena low-poly em terceira pessoa: personagem sobre terreno verde quadriculado, com câmera suavizada atrás do personagem. WASD movimenta em relação à orientação do personagem; ao manter W, a câmera retorna suavemente para trás dele. Scroll aproxima/afasta e arrastar com o botão direito orbita. A câmera respeita o chão plano, mas ainda não evita paredes ou árvores: o projeto não possui geometria de cenário nem sistema de colisores.
+Uma cena low-poly em terceira pessoa: placeholder procedural sobre terreno verde quadriculado, com câmera suavizada. WASD movimenta; scroll aproxima/afasta e arrastar com o botão direito orbita. Na janela `Character Equipment Test`, `1–8` alternam grupos de equipamento, `9` alterna anéis/brincos, `T` troca a paleta e `0` restaura o conjunto. O corpo visível continua placeholder, não é um GLB real. A câmera respeita o chão, mas ainda não evita paredes ou árvores.
 
-The console should print OpenGL version, vendor, renderer, and GLSL version, then `[app] Marco 003 running`.
+The console prints OpenGL version, vendor, renderer and GLSL version, then `[app] Character Equipment Test running` and the controls.
 
 ## Marco 003 acceptance
 
 - [ ] CMake configure succeeds with MSVC x64 and the vcpkg toolchain
 - [ ] `mmo_client` links without errors
-- [ ] A window titled `MMO Engine - Marco 003` appears
+- [ ] A window titled `MMO Engine - Character Equipment Test` appears
 - [ ] A 3D ground plane and a controllable character are visible
-- [ ] WASD moves the character and animates its arms and legs
+- [ ] WASD moves the character
+- [ ] Equipment groups can be toggled and recolored in the test scene
+- [ ] A real skinned GLB drives the skeleton (not implemented; requires a model asset and GLTF loader)
 - [ ] Resize still fills the framebuffer (viewport callback)
 - [ ] Escape or close destroys the context and returns 0
 - [ ] Console shows GL version **3.3** or higher in a **Core** context
@@ -134,18 +139,7 @@ The console should print OpenGL version, vendor, renderer, and GLSL version, the
 
 ## Tests
 
-There is no automated GPU test yet. The acceptance list above is checked by running the client and testing movement in the window.
-
-## Git
-
-After Git is installed:
-
-```powershell
-cd C:\Users\gugug\Desktop\mmo
-git init
-git add .
-git commit -m "Marco 001: OpenGL 3.3 window and triangle foundation"
-```
+`CharacterEquipmentTest` validates synthetic model/skeleton data, animation state/crossfade and skin matrices, all equipment slots, attachment resolution, replacement, unequip and failure atomicity without opening a window. Run it with the `ctest` command above. GPU rendering and real GLB import remain manual/future checks.
 
 ## License of content
 
