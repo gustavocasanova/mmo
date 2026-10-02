@@ -56,21 +56,9 @@ MeshData make_cube()
 MeshData make_ground()
 {
     std::vector<Vertex> vertices;
-    constexpr int kGroundRadius = 48;
-    vertices.reserve(kGroundRadius * 2 * kGroundRadius * 2 * 6);
-    for (int cell_x = -kGroundRadius; cell_x < kGroundRadius; ++cell_x) {
-        for (int cell_z = -kGroundRadius; cell_z < kGroundRadius; ++cell_z) {
-            const float shade = (cell_x + cell_z) % 2 == 0 ? 0.92f : 1.0f;
-            const Vec3 color{shade, shade, shade};
-            append_quad(vertices,
-                {static_cast<float>(cell_x), 0.0f, static_cast<float>(cell_z)},
-                {static_cast<float>(cell_x), 0.0f, static_cast<float>(cell_z + 1)},
-                {static_cast<float>(cell_x + 1), 0.0f, static_cast<float>(cell_z + 1)},
-                {static_cast<float>(cell_x + 1), 0.0f, static_cast<float>(cell_z)},
-                {0.0f, 1.0f, 0.0f}, color);
-        }
-    }
+    vertices.reserve(6);
+    append_quad(vertices, {-48, 0, -48}, {-48, 0, 48}, {48, 0, 48}, {48, 0, -48},
+        {0, 1, 0}, {1, 1, 1});
     return {std::move(vertices)};
 }
-
 }

@@ -41,6 +41,10 @@ Renderer::Renderer(GraphicsLoader load, const assets::MeshCatalog& assets)
     }
 }
 Renderer::~Renderer() = default;
+void Renderer::update_mesh(assets::MeshId id, const assets::MeshData& data)
+{
+    impl_->meshes.at(id.value)->update(data);
+}
 void Renderer::render(int width, int height, const scene::Camera& camera,
     std::span<const scene::DrawItem> items) const
 {
@@ -56,6 +60,11 @@ void Renderer::render(int width, int height, const scene::Camera& camera,
         impl_->shader.set_matrices(projection, view, item.transform);
         impl_->shader.set_tint(item.material.tint);
         impl_->shader.set_pattern(item.material.pattern);
+        if (!item.skinning_matrices.empty() && mesh->required_bones() > item.skinning_matrices.size()) {
+            throw std::invalid_argument("skinning palette does not cover the mesh bones");
+        }
+        impl_->shader.set_skinning(mesh->required_bones() > 0
+            ? item.skinning_matrices : std::span<const math::Mat4>{});
         mesh->draw();
     }
 }

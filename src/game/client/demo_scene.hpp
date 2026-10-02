@@ -1,6 +1,7 @@
 #pragma once
 #include "assets/mesh_catalog.hpp"
-#include "game/client/character_visual.hpp"
+#include "game/characters/character.hpp"
+#include "game/client/equipment_visual.hpp"
 #include "scene/draw_item.hpp"
 #include <span>
 #include <vector>
@@ -10,10 +11,11 @@ namespace mmo::game::client {
 class DemoScene {
 public:
     explicit DemoScene(assets::MeshCatalog& catalog);
+    assets::MeshId set_equipment(assets::MeshCatalog& catalog, const CharacterEquipment& equipment);
     std::span<const scene::DrawItem> update(float delta_seconds, const characters::Character& character);
 private:
     assets::MeshId ground_;
-    CharacterVisual character_;
+    assets::MeshId character_;
     std::vector<scene::DrawItem> draws_;
 };
 }

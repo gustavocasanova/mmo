@@ -1,6 +1,7 @@
 #include "assets/procedural_meshes.hpp"
 #include "game/characters/character.hpp"
 #include "game/client/demo_scene.hpp"
+#include "game/client/character_visual.hpp"
 #include "game/items/item.hpp"
 #include "scene/camera_controller.hpp"
 #include <cmath>
@@ -69,19 +70,37 @@ void scene_and_assets()
     game::client::DemoScene scene(catalog);
     game::characters::Character character;
     auto draws = scene.update(0, character);
-    check(draws.size() == 11, "prototype draw count changed");
-    check(catalog.meshes().size() == 2, "prototype should share cube mesh");
-    check(catalog.get(draws[0].mesh).vertices.size() == 55296, "ground geometry changed");
-    check(catalog.get(draws[1].mesh).vertices.size() == 36, "cube geometry changed");
-    for (std::size_t i = 1; i < draws.size(); ++i) check(draws[i].mesh == draws[1].mesh, "character meshes not shared");
-    near(draws[1].transform[3].y, 1.31f, "torso position changed");
-    const auto original_leg = draws[7].transform;
+    check(draws.size() == 2, "equipment demo must draw ground and character");
+    check(catalog.meshes().size() == 2, "demo should register two meshes");
+    check(catalog.get(draws[0].mesh).vertices.size() == 6, "optimized ground must stay a single quad");
+    const auto character_mesh = draws[1].mesh;
+    const auto original_vertices = catalog.get(character_mesh).vertices.size();
+    check(original_vertices > 36, "upstream equipment character geometry lost");
+    auto equipment = game::client::make_default_character_equipment();
+    equipment[game::client::EquipmentSlot::Helmet].equipped = false;
+    check(scene.set_equipment(catalog, equipment) == character_mesh, "equipment replacement changed mesh ID");
+    check(catalog.get(character_mesh).vertices.size() < original_vertices, "helmet toggle did not change geometry");
+    scene.set_equipment(catalog, game::client::make_default_character_equipment());
+    check(catalog.get(character_mesh).vertices.size() == original_vertices, "equipment reset lost geometry");
     character.update(0.1f, {1, 0}, {});
     draws = scene.update(0.1f, character);
     near(draws[1].transform[3].z, 0.42f, "visual does not follow character");
-    check(draws[7].transform != original_leg, "walking animation lost");
-    check(catalog.meshes().size() == 2, "frame update reallocates assets");
+    check(catalog.meshes().size() == 2, "equipment update reallocates catalog IDs");
     rejects([&] { catalog.get({99}); }, "unknown mesh ID accepted");
+    rejects([&] { catalog.replace(character_mesh, {}); }, "invalid replacement accepted");
+    check(catalog.get(character_mesh).vertices.size() == original_vertices, "failed replacement changed geometry");
+
+    // Keep the PR's reusable block-character animation tested independently of the new demo.
+    const auto cube = catalog.add(assets::make_cube());
+    game::client::CharacterVisual blocks(cube);
+    std::vector<scene::DrawItem> parts;
+    blocks.append_draws(character, parts);
+    check(parts.size() == 10, "block character parts lost");
+    const auto original_leg = parts[6].transform;
+    blocks.update(0.1f, true);
+    parts.clear();
+    blocks.append_draws(character, parts);
+    check(parts[6].transform != original_leg, "block walking animation lost");
 }
 void camera()
 {
@@ -91,7 +110,7 @@ void camera()
     near(initial.focus_y, 1.35f, "camera focus changed");
     check(initial.eye_z < 0, "camera must start behind character");
     const float rotation = controller.apply_input({20, 0, 0, true});
-    near(rotation, -0.1f, "mouse sensitivity changed");
+    near(rotation, 0.1f, "mouse sensitivity changed");
     controller.apply_input({0, 10000, -10000, true});
     Camera view;
     for (int i = 0; i < 120; ++i) {

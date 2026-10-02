@@ -8,6 +8,7 @@ namespace mmo::assets {
 class MeshCatalog {
 public:
     MeshId add(MeshData data);
+    void replace(MeshId id, MeshData data);
     const MeshData& get(MeshId id) const;
     std::span<const MeshData> meshes() const { return meshes_; }
 private:

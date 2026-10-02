@@ -32,10 +32,23 @@ add_library(mmo_game STATIC
     src/game/items/item.cpp)
 target_link_libraries(mmo_game PUBLIC mmo_math)
 
+add_library(mmo_animation STATIC
+    src/animation/animation_controller.cpp
+    src/animation/skeleton.cpp)
+target_link_libraries(mmo_animation PUBLIC mmo_build_options)
+
+add_library(mmo_character STATIC
+    src/character/character.cpp
+    src/character/character_body.cpp
+    src/character/character_model.cpp
+    src/equipment/equipment.cpp)
+target_link_libraries(mmo_character PUBLIC mmo_assets mmo_animation)
+
 add_library(mmo_assets STATIC
+    src/assets/model.cpp
     src/assets/mesh_catalog.cpp
     src/assets/procedural_meshes.cpp)
-target_link_libraries(mmo_assets PUBLIC mmo_math)
+target_link_libraries(mmo_assets PUBLIC mmo_math mmo_animation)
 
 add_library(mmo_scene STATIC
     src/scene/camera.cpp
@@ -44,7 +57,8 @@ target_link_libraries(mmo_scene PUBLIC mmo_math)
 
 add_library(mmo_presentation STATIC
     src/game/client/character_visual.cpp
-    src/game/client/demo_scene.cpp)
+    src/game/client/demo_scene.cpp
+    src/game/client/equipment_visual.cpp)
 target_link_libraries(mmo_presentation PUBLIC mmo_game mmo_assets mmo_scene)
 
 if(MMO_BUILD_CLIENT)
@@ -75,4 +89,7 @@ if(BUILD_TESTING)
     add_executable(mmo_domain_tests tests/domain_tests.cpp)
     target_link_libraries(mmo_domain_tests PRIVATE mmo_game mmo_presentation)
     add_test(NAME domain COMMAND mmo_domain_tests)
+    add_executable(mmo_character_tests tests/character_equipment_test.cpp)
+    target_link_libraries(mmo_character_tests PRIVATE mmo_character)
+    add_test(NAME CharacterEquipmentTest COMMAND mmo_character_tests)
 endif()

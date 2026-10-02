@@ -44,6 +44,9 @@ Validar a direção com uma cena pequena: terreno, rochas, árvores, água e um 
 | `platform` | janela, eventos, input, filesystem/clock do SO | regras do mundo, recursos OpenGL |
 | `renderer` | dispositivo, buffers, shaders, materiais, render passes | gameplay, rede, banco |
 | `assets` | localizar, carregar, validar e cachear assets | API gráfica nos formatos de domínio |
+| `animation` | skeleton, clips, poses, skin matrices e crossfade CPU | GLFW e OpenGL |
+| `character` | corpo, aparência, atributos e composição do modelo de personagem | OpenGL |
+| `equipment` | slots e resolução de attachments em bones | OpenGL |
 | `scene` | câmera, transformações, visibilidade e representação visual | autoridade de gameplay |
 | `game/characters`, `game/items`, `game/world` | estado e regras de domínio compartilháveis | renderer, platform, assets, banco |
 | `game/shared` (futuro) | protocolo e tipos de rede | renderer, SO, banco |
@@ -129,6 +132,14 @@ Criar diretórios e bibliotecas apenas quando houver código para eles. A árvor
 
 Não instalar a lista futura toda agora. Fixar versões/ports no manifesto quando o código começar a consumir cada biblioteca.
 
+Os alvos `mmo_character`, `mmo_assets` e `mmo_animation` preservam os módulos de modelos, skeleton/animation, character e equipment da main sem links para GLFW, GLAD ou OpenGL. A cena procedural continua independente de CharacterModel. O contrato `assets::ModelLoader` recebe caminhos `.glb`/`.gltf`, mas ainda não há implementação GLTF; nenhum parser próprio foi criado e nenhuma dependência de importação foi adicionada.
+
+`assets::Model` representa dados CPU. `renderer::Mesh` suporta vertices estáticos e quatro influências por vertex, e o vertex shader possui skinning com paleta de até 48 bones. O renderer ainda não converte automaticamente `assets::Model` em buffers, não carrega imagens e não faz upload/amostragem de texturas.
+
+O corpo base é um `CharacterBody` que referencia um model com skeleton. `CharacterModel` combina corpo, `AnimationController`, aparência e `EquipmentManager`. Equipment é dado independente por slot; `EquipmentManager::equip` valida o formato `.glb`/`.gltf`, attachments e bones antes de substituir o slot. Vários attachments por item cobrem peças bilaterais. O manager não carrega modelos nem chama OpenGL. `Character` mantém transform e stats mínimos.
+
+O personagem procedural existente é somente placeholder da cena interativa `Character Equipment Test`; ele não representa um asset final nem consome ainda os dados do `CharacterModel`. O CTest usa mesh, skeleton e animações sintéticos, sem inventar um arquivo GLB.
+
 ## Rede, simulação e persistência
 
 - Simulação de servidor com passo fixo; renderização do cliente pode variar independentemente. Medir a frequência e o custo por zona antes de otimizar.
@@ -149,12 +160,12 @@ Plano de validação incremental: clientes reais para a experiência e bots dete
 
 ## Ambiente de desenvolvimento e distribuição
 
-O fluxo compartilhado de desenvolvimento do cliente usa Windows 11/VS 2022 x64. O CMake aceita compiladores e dependências nativas compatíveis; presets pessoais ficam em CMakeUserPresets.json, fora do Git. Planejar o servidor para Linux desde a separação do primeiro executável, com build/teste Linux em CI antes de produção. Conteúdo artístico passa por pipeline Blender -> formato de intercâmbio -> validação/cook -> runtime; manter fontes e derivados separados.
+O fluxo compartilhado de desenvolvimento do cliente usa Windows 11/VS 2022 ou VS 2026 x64. O CMake aceita compiladores e dependências nativas compatíveis; presets pessoais ficam em CMakeUserPresets.json, fora do Git. Planejar o servidor para Linux desde a separação do primeiro executável, com build/teste Linux em CI antes de produção. Conteúdo artístico passa por pipeline Blender -> formato de intercâmbio -> validação/cook -> runtime; manter fontes e derivados separados.
 
 ## Estado executável atual
 
-Os componentes do Marco 002 estão implementados. Shader e Mesh cuidam dos recursos GPU; Material e Camera descrevem a cena; GLM fornece a matemática. Assets têm dados CPU e catálogo próprios. Character encapsula o movimento, e CharacterVisual monta e anima sua representação. ItemDefinition e ItemStack estabelecem o domínio de itens, ainda sem inventário ou itens visíveis.
+Os componentes do Marco 002 estão implementados. Shader e Mesh cuidam dos recursos GPU; Material e Camera descrevem a cena; GLM fornece a matemática. Assets têm dados CPU e catálogo próprios. Character encapsula o movimento, e DemoScene monta o personagem equipado com a geometria procedural trazida pela main. CharacterVisual continua disponível como componente de animação em blocos, mas não é a cena ativa. ItemDefinition e ItemStack estabelecem o domínio de itens, ainda sem inventário ou itens visíveis.
 
 `mmo_client` abre uma janela OpenGL 3.3 Core e renderiza o protótipo de terreno quadriculado e personagem em terceira pessoa. CameraController controla órbita e suavização; a aplicação conecta input, personagem, câmera e cena; Window encapsula GLFW; Renderer recebe DrawItems e não conhece jogadores ou itens.
 
-Ainda não há carregamento de modelos/texturas, colisores de cenário, combate, rede, servidor ou persistência. A proteção de câmera continua limitada ao chão plano. Build headless e testes CPU verificam os módulos sem GLFW/GLAD/OpenGL; isso ainda não constitui um servidor dedicado.
+Ainda não há carregamento de modelos/texturas, colisores de cenário, combate, rede, servidor ou persistência. A proteção de câmera continua limitada ao chão plano. Os controles 1–9/T/0 da cena de equipamentos e a correção de direção horizontal do mouse da main foram preservados. Build headless e testes CPU verificam os módulos sem GLFW/GLAD/OpenGL; isso ainda não constitui um servidor dedicado.

@@ -1,4 +1,6 @@
 #include "renderer/shader.hpp"
+#include "assets/mesh_data.hpp"
+#include <cmath>
 #include "renderer/opengl/builtin_shaders.hpp"
 #include <glad/gl.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -108,6 +110,10 @@ Shader::Shader()
     model_location_ = glGetUniformLocation(id_, "u_model");
     tint_location_ = glGetUniformLocation(id_, "u_tint");
     pattern_location_ = glGetUniformLocation(id_, "u_surface_pattern");
+    normal_locations_ = {glGetUniformLocation(id_, "u_normal_column0"),
+        glGetUniformLocation(id_, "u_normal_column1"), glGetUniformLocation(id_, "u_normal_column2")};
+    skinning_location_ = glGetUniformLocation(id_, "u_bone_matrices[0]");
+    skinned_location_ = glGetUniformLocation(id_, "u_is_skinned");
 }
 
 Shader::~Shader()
@@ -127,6 +133,13 @@ void Shader::set_matrices(const Mat4& projection, const Mat4& view, const Mat4& 
     glUniformMatrix4fv(projection_location_, 1, GL_FALSE, glm::value_ptr(projection));
     glUniformMatrix4fv(view_location_, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(model_location_, 1, GL_FALSE, glm::value_ptr(model));
+    const glm::mat3 linear(model);
+    const glm::mat3 normal = std::abs(glm::determinant(linear)) <= 0.000001f
+        ? glm::mat3(1.0f) : glm::transpose(glm::inverse(linear));
+    for (std::size_t i = 0; i < normal_locations_.size(); ++i) {
+        const auto column = normal[static_cast<int>(i)];
+        glUniform3f(normal_locations_[i], column.x, column.y, column.z);
+    }
 }
 
 void Shader::set_tint(Vec3 tint) const
@@ -139,4 +152,15 @@ void Shader::set_pattern(scene::SurfacePattern pattern) const
     glUniform1i(pattern_location_, pattern == scene::SurfacePattern::checker_grid ? 1 : 0);
 }
 
+void Shader::set_skinning(std::span<const math::Mat4> matrices) const
+{
+    if (matrices.size() > assets::kMaxSkinningBones) {
+        throw std::length_error("OpenGL skinning palette exceeds the 48-bone limit");
+    }
+    glUniform1i(skinned_location_, matrices.empty() ? 0 : 1);
+    if (!matrices.empty()) {
+        glUniformMatrix4fv(skinning_location_, static_cast<GLsizei>(matrices.size()),
+            GL_FALSE, glm::value_ptr(matrices.front()));
+    }
+}
 }

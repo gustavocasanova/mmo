@@ -72,6 +72,7 @@ typedef ptrdiff_t GLsizeiptr;
 #define GL_DEPTH_TEST 0x0B71
 #define GL_CULL_FACE 0x0B44
 #define GL_FLOAT 0x1406
+#define GL_UNSIGNED_INT 0x1405
 #define GL_ARRAY_BUFFER 0x8892
 #define GL_STATIC_DRAW 0x88E4
 #define GL_FRAGMENT_SHADER 0x8B30

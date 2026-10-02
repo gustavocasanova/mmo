@@ -15,6 +15,7 @@ public:
     ~Renderer();
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
+    void update_mesh(assets::MeshId id, const assets::MeshData& data);
     void render(int width, int height, const scene::Camera& camera,
         std::span<const scene::DrawItem> items) const;
 private:

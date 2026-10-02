@@ -2,7 +2,7 @@
 
 ## Estado atual
 
-O projeto tem um protótipo 3D local com terreno procedural, personagem feito de cubos, iluminação direcional simples, câmera em terceira pessoa e movimentação WASD. Os componentes do Marco 002 estão implementados, com parte do Marco 003 já disponível.
+O projeto tem um protótipo 3D local com terreno procedural, personagem procedural com equipamentos interativos, iluminação direcional simples, câmera em terceira pessoa e movimentação WASD. Os componentes do Marco 002 estão implementados, com parte do Marco 003 já disponível.
 
 A próxima etapa é completar o Mundo 3D do Marco 003, principalmente carregamento de modelos e texturas. A numeração exibida na janela não indica que todos os requisitos anteriores foram concluídos.
 
@@ -31,12 +31,13 @@ Carregar modelos e texturas, renderizar terreno, adicionar iluminação, criar u
 
 Estado no código:
 
-- [ ] Carregamento de modelos: o personagem atual é gerado com cubos.
+- [ ] Carregamento de modelos: o personagem atual é procedural; existe um contrato ModelLoader, mas nenhum parser GLB/glTF integrado.
 - [ ] Carregamento de texturas: o terreno atual usa cores e padrão procedural no shader.
 - [x] Terreno básico procedural.
 - [x] Iluminação direcional simples.
 - [x] Câmera em terceira pessoa com órbita, zoom e suavização.
 - [x] Movimentação WASD básica.
+- [x] Cena interativa de equipamentos (1–9/T/0), preservada da main.
 
 Os itens marcados representam funcionalidades presentes no código; a validação visual e dos controles continua necessária.
 
@@ -46,7 +47,7 @@ Critério de aceite: uma cena explorável com modelo e textura carregados de arq
 
 Implementar entidades, animações, atributos, criaturas controladas por IA, habilidades, vida, dano e inventário local.
 
-A animação procedural de caminhada atual é apenas um protótipo visual. Character já encapsula movimento; ItemDefinition e ItemStack oferecem uma base de domínio para itens, ainda sem integração na cena ou inventário. Ainda não há os sistemas de entidades, IA e combate deste marco.
+A main adicionou Character/CharacterModel/CharacterBody, atributos básicos, skeleton, avaliação de animação/crossfade e EquipmentManager, testados com modelos sintéticos. A cena equipada ainda é procedural e estática; o componente anterior de animação em blocos continua separado. O movimento local e ItemDefinition/ItemStack permanecem nos módulos game. Ainda não há loader GLB real, inventário, IA ou combate integrado.
 
 Critério de aceite: uma interação de combate offline com criatura controlada por IA, uso de habilidade, alteração de vida/dano e inventário local, com regras testáveis sem renderer.
 
