@@ -1,4 +1,5 @@
 #include "animation/animation_controller.hpp"
+#include "assets/gltf_model_loader.hpp"
 #include "assets/model.hpp"
 #include "character/character.hpp"
 #include "equipment/equipment.hpp"
@@ -220,6 +221,49 @@ void test_character_equipment()
         "gameplay stats should remain separate and clamp basic values");
 }
 
+void test_male_character_run_glb()
+{
+    mmo::assets::GltfModelLoader loader;
+    const mmo::assets::Model model = loader.load("personagem/characterRIGGED.glb");
+    std::string validation_reason;
+    require(model.validate(&validation_reason),
+        validation_reason.c_str());
+    require(model.meshes.size() == 3,
+        "male character GLB should load the face, eyes, and body meshes");
+    require(model.skeleton.bones.size() == mmo::animation::kMaxSkinningBones,
+        "male character GLB should load all 65 joints and the shared root");
+    require(model.skeleton.find_bone("pelvis").has_value(),
+        "male character GLB should preserve humanoid joint names");
+    require(model.animations.size() == 1,
+        "male character GLB should contain the retargeted run clip");
+    require(model.animations.front().name == "Slow Run",
+        "male character GLB should preserve the run clip name");
+    require(model.animations.front().channels.size() >= 20,
+        "retargeted run clip should animate the character skeleton");
+
+    mmo::animation::AnimationController controller(model.skeleton, model.animations);
+    require(controller.bind_state(mmo::animation::AnimationState::Walk, 0),
+        "run clip should be bindable to the movement state");
+    require(controller.set_state(mmo::animation::AnimationState::Walk, 0.0f),
+        "run clip should start when entering the movement state");
+    const auto initial_pose = controller.pose().skin_matrices;
+    controller.update(model.animations.front().duration * 0.5f);
+    bool pose_changed = false;
+    for (std::size_t bone = 0; bone < initial_pose.size(); ++bone) {
+        for (std::size_t component = 0; component < initial_pose[bone].size(); ++component) {
+            if (std::abs(initial_pose[bone][component] -
+                    controller.pose().skin_matrices[bone][component]) > 0.001f) {
+                pose_changed = true;
+                break;
+            }
+        }
+        if (pose_changed) {
+            break;
+        }
+    }
+    require(pose_changed, "run clip should change the rendered skinning pose");
+}
+
 }
 
 int main()
@@ -227,6 +271,7 @@ int main()
     try {
         test_skeleton_animation_and_model();
         test_character_equipment();
+        test_male_character_run_glb();
         std::cout << "CharacterEquipmentTest passed\n";
         return 0;
     } catch (const std::exception& error) {

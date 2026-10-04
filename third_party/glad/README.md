@@ -4,7 +4,8 @@
 
 Load OpenGL 3.3 Core function pointers after GLFW creates a context.
 
-Application code uses the GLAD 2 include and init path:
+Application code uses the GLAD 2 include and init path. The vendored subset also
+includes the OpenGL 3.1 uniform-buffer entry points required by character skinning:
 
 ```cpp
 #include <glad/gl.h>

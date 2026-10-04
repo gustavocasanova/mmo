@@ -4,6 +4,7 @@
   "description": "Custom 3D engine foundation for a future MMORPG client and dedicated server.",
   "homepage": "",
   "dependencies": [
+    "fastgltf",
     "glfw3",
     "glm"
   ]

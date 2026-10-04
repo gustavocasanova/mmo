@@ -3,7 +3,7 @@
 ## Responsabilidades
 
 ```text
-GLB/glTF --future ModelLoader--> assets::Model (CPU data)
+GLB/glTF --GltfModelLoader--> assets::Model (CPU data)
                                       |
                                       v
 Character -> CharacterModel -> CharacterBody -> model meshes + skeleton
@@ -25,7 +25,7 @@ Character -> CharacterModel -> CharacterBody -> model meshes + skeleton
 
 `animation::Bone` registra nome, índice, pai, transform local de bind e inverse-bind matrix. `Skeleton::add_bone` atribui índices; não há lista humanoide fixa. `find_bone`, `root_bone_index` e `is_valid` permitem consultar e validar nomes únicos, pais, uma raiz e ciclos. Skeleton vazio é permitido para models estáticos.
 
-`Animator` avalia canais de translation, quaternion rotation e scale, monta matrizes globais e calcula `global * inverseBind`. `AnimationClip::is_valid` confere duração, bone indices, ordenação e tamanho de keyframes. O renderer atual aceita no máximo 48 matrizes na paleta GLSL e quatro influências por vertex.
+`Animator` avalia canais de translation, quaternion rotation e scale, monta matrizes globais e calcula `global * inverseBind`. `AnimationClip::is_valid` confere duração, bone indices, ordenação e tamanho de keyframes. O renderer aceita até 66 matrizes de skinning em um uniform buffer e quatro influências por vertex.
 
 ## Animation Controller
 
@@ -33,10 +33,12 @@ Character -> CharacterModel -> CharacterBody -> model meshes + skeleton
 
 ## Aparência e câmera
 
-`CharacterAppearance` reserva dados simples para variante/cor do corpo, sem editor de criação. A câmera terceira pessoa continua em `scene::CameraController`, separada de Character e CharacterModel; seguir/orbitar/zoom não pertencem ao asset.
+`CharacterAppearance` reserva dados simples para variante/cor do corpo, sem editor de criação. A câmera terceira pessoa continua em `core::CameraController`, separada de Character e CharacterModel; seguir/orbitar/zoom não pertencem ao asset.
 
 ## Estado e limitações
 
-Não existe loader GLB/glTF conectado, upload de `assets::Model` para GPU, upload de textura ou personagem skinned real. O personagem visível ainda é um placeholder procedural de game/client/equipment_visual. `CharacterEquipmentTest` valida contratos com dados sintéticos. A aplicação permite alternar visualmente esse placeholder com 1–9/T/0.
+`assets::GltfModelLoader` usa fastgltf para carregar meshes, normals, pesos, joints, inverse-bind matrices e canais de animação `LINEAR`/`STEP` de GLB/glTF para `assets::Model`. O cliente carrega `personagem/characterRIGGED.glb`, envia a malha ao renderer e atualiza a paleta de skinning a cada frame. O tamanho do modelo é normalizado para 1,8 unidades de altura e a base é alinhada ao chão.
 
-O caminho planejado do corpo é `assets/characters/player/body/player_body.glb`. Esse arquivo não foi criado. Quando o asset autoral existir, implementar/adicionar um `ModelLoader` maduro, mapear os dados para `assets::Model` e integrar buffers e materiais ao renderer.
+O GLB runtime usa o personagem masculino de 65 joints e inclui o clip `Slow Run`, retargetado dos ossos Mixamo. Quando o personagem se move, `Walk` usa um clip `Walk` se existir; caso contrário, usa `Run`. Ao parar, volta à pose de bind se não houver clip `Idle`. Texturas ainda não são enviadas à GPU; fatores base de cor são aplicados por vértice.
+
+O script `scripts/build_male_run_animation.py` regenera o GLB runtime a partir do personagem glTF e da animação FBX. `CharacterEquipmentTest` cobre os contratos CPU de equipamento e valida também o asset/animação runtime; as peças ainda não são carregadas/renderizadas como modelos GLB.

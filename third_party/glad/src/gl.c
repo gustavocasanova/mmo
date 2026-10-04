@@ -13,6 +13,8 @@ PFNGLDELETEVERTEXARRAYSPROC glad_glDeleteVertexArrays = NULL;
 PFNGLGENBUFFERSPROC glad_glGenBuffers = NULL;
 PFNGLBINDBUFFERPROC glad_glBindBuffer = NULL;
 PFNGLBUFFERDATAPROC glad_glBufferData = NULL;
+PFNGLBUFFERSUBDATAPROC glad_glBufferSubData = NULL;
+PFNGLBINDBUFFERBASEPROC glad_glBindBufferBase = NULL;
 PFNGLDELETEBUFFERSPROC glad_glDeleteBuffers = NULL;
 PFNGLENABLEVERTEXATTRIBARRAYPROC glad_glEnableVertexAttribArray = NULL;
 PFNGLVERTEXATTRIBPOINTERPROC glad_glVertexAttribPointer = NULL;
@@ -27,6 +29,8 @@ PFNGLATTACHSHADERPROC glad_glAttachShader = NULL;
 PFNGLLINKPROGRAMPROC glad_glLinkProgram = NULL;
 PFNGLGETPROGRAMIVPROC glad_glGetProgramiv = NULL;
 PFNGLGETPROGRAMINFOLOGPROC glad_glGetProgramInfoLog = NULL;
+PFNGLGETUNIFORMBLOCKINDEXPROC glad_glGetUniformBlockIndex = NULL;
+PFNGLUNIFORMBLOCKBINDINGPROC glad_glUniformBlockBinding = NULL;
 PFNGLUSEPROGRAMPROC glad_glUseProgram = NULL;
 PFNGLDELETEPROGRAMPROC glad_glDeleteProgram = NULL;
 PFNGLGETUNIFORMLOCATIONPROC glad_glGetUniformLocation = NULL;
@@ -50,6 +54,8 @@ static int load_required(GLADloadfunc load)
     glad_glGenBuffers = (PFNGLGENBUFFERSPROC)load("glGenBuffers");
     glad_glBindBuffer = (PFNGLBINDBUFFERPROC)load("glBindBuffer");
     glad_glBufferData = (PFNGLBUFFERDATAPROC)load("glBufferData");
+    glad_glBufferSubData = (PFNGLBUFFERSUBDATAPROC)load("glBufferSubData");
+    glad_glBindBufferBase = (PFNGLBINDBUFFERBASEPROC)load("glBindBufferBase");
     glad_glDeleteBuffers = (PFNGLDELETEBUFFERSPROC)load("glDeleteBuffers");
     glad_glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)load("glEnableVertexAttribArray");
     glad_glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)load("glVertexAttribPointer");
@@ -64,6 +70,8 @@ static int load_required(GLADloadfunc load)
     glad_glLinkProgram = (PFNGLLINKPROGRAMPROC)load("glLinkProgram");
     glad_glGetProgramiv = (PFNGLGETPROGRAMIVPROC)load("glGetProgramiv");
     glad_glGetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)load("glGetProgramInfoLog");
+    glad_glGetUniformBlockIndex = (PFNGLGETUNIFORMBLOCKINDEXPROC)load("glGetUniformBlockIndex");
+    glad_glUniformBlockBinding = (PFNGLUNIFORMBLOCKBINDINGPROC)load("glUniformBlockBinding");
     glad_glUseProgram = (PFNGLUSEPROGRAMPROC)load("glUseProgram");
     glad_glDeleteProgram = (PFNGLDELETEPROGRAMPROC)load("glDeleteProgram");
     glad_glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)load("glGetUniformLocation");
@@ -83,6 +91,8 @@ static int load_required(GLADloadfunc load)
         && glad_glGenBuffers
         && glad_glBindBuffer
         && glad_glBufferData
+        && glad_glBufferSubData
+        && glad_glBindBufferBase
         && glad_glDeleteBuffers
         && glad_glEnableVertexAttribArray
         && glad_glVertexAttribPointer
@@ -97,6 +107,8 @@ static int load_required(GLADloadfunc load)
         && glad_glLinkProgram
         && glad_glGetProgramiv
         && glad_glGetProgramInfoLog
+        && glad_glGetUniformBlockIndex
+        && glad_glUniformBlockBinding
         && glad_glUseProgram
         && glad_glDeleteProgram
         && glad_glGetUniformLocation

@@ -1,5 +1,6 @@
 {
   "cmake.configureOnOpen": true,
+  "cmake.configurePreset": "vs2026-debug",
   "cmake.preferredGenerators": ["Visual Studio 18 2026"],
   "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
   "files.encoding": "utf8"

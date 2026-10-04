@@ -13,6 +13,7 @@ namespace mmo::animation {
 using Matrix4 = std::array<float, 16>;
 using Vector3 = std::array<float, 3>;
 inline constexpr std::size_t kNoBone = std::numeric_limits<std::size_t>::max();
+inline constexpr std::size_t kMaxSkinningBones = 66;
 
 struct Quaternion {
     float x = 0.0f;
@@ -28,6 +29,11 @@ struct Transform {
 };
 
 using BoneTransform = Transform;
+
+enum class Interpolation {
+    Linear,
+    Step,
+};
 
 struct Bone {
     std::string name;
@@ -60,11 +66,13 @@ struct Pose {
 struct Vector3Keyframes {
     std::vector<float> times;
     std::vector<Vector3> values;
+    Interpolation interpolation = Interpolation::Linear;
 };
 
 struct QuaternionKeyframes {
     std::vector<float> times;
     std::vector<Quaternion> values;
+    Interpolation interpolation = Interpolation::Linear;
 };
 
 struct AnimationChannel {

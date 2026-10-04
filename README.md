@@ -2,7 +2,7 @@
 
 Engine 3D própria em C++20 para um MMORPG persistente de fantasia nórdica estilizada, com Valheim como referência visual de alto nível e assets/identidade originais. Sem Unity, Unreal ou Godot. O renderer é nosso; o primeiro backend usa OpenGL 3.3 Core.
 
-**Etapa atual: Marco 003 — Mundo 3D.** A arquitetura do Marco 002 está implementada: Window, Renderer, Shader, Mesh, Material, Camera e GLM. O protótipo tem terreno, iluminação simples, personagem procedural com equipamentos interativos, câmera em terceira pessoa e movimento WASD; faltam carregamento de modelos e texturas. Veja o [roadmap](docs/roadmap.md) e o [guia dos módulos](docs/modules.md). Ainda não há rede nem simulação autoritativa.
+Current step: **Marco 003 — personagem autoral em terceira pessoa**. O cliente carrega `personagem/characterRIGGED.glb` por fastgltf e aplica skinning da rig. A animação `Slow Run` retargetada toca durante o movimento; ainda não há rede nem simulação autoritativa.
 
 A arquitetura e as dependências planejadas estão em [docs/architecture.md](docs/architecture.md). A regra central é manter a simulação do servidor independente do cliente e da GPU.
 
@@ -15,7 +15,7 @@ Install these before configuring CMake. This machine did not have them on PATH w
 | Git | Version control; cloning vcpkg | `winget install --id Git.Git -e --source winget` |
 | Visual Studio 2022 (MSVC) | C++20 compiler and Windows SDK | Workload **Desktop development with C++** |
 | CMake 3.21+ | Build | Comes with VS, or `winget install --id Kitware.CMake -e --source winget` |
-| vcpkg | GLFW e GLM | Clone as below |
+| vcpkg | GLFW | Clone as below |
 | GPU driver with OpenGL 3.3 | Runtime | Vendor driver |
 
 Optional helper script (installs Git, CMake, VS Community):
@@ -88,7 +88,7 @@ $env:VCPKG_ROOT = "$env:USERPROFILE\vcpkg"   # skip if already set
 cmake --preset vs2026-debug
 cmake --build --preset vs2026-debug
 ctest --test-dir build-vs2026-marco001 -C Debug --output-on-failure
-.\build-vs2026-marco001\Debug\mmo_client.exe
+\.\build-vs2026-marco001\Debug\mmo_client.exe
 ```
 
 For a Visual Studio 2022 installation, use `vs2022-debug` instead; that preset uses `build/`.
@@ -107,21 +107,18 @@ Close with the window chrome or **Escape**. The process should print `[app] shut
 
 ## Expected picture
 
-Uma cena low-poly em terceira pessoa: placeholder procedural sobre terreno verde quadriculado, com câmera suavizada. WASD movimenta; scroll aproxima/afasta e arrastar com o botão direito orbita. Na janela `Character Equipment Test`, `1–8` alternam grupos de equipamento, `9` alterna anéis/brincos, `T` troca a paleta e `0` restaura o conjunto. O corpo visível continua placeholder, não é um GLB real. A câmera respeita o chão, mas ainda não evita paredes ou árvores.
+Uma cena em terceira pessoa com terreno verde quadriculado e o modelo rigged local em `personagem/characterRIGGED.glb`. WASD movimenta e toca a animação de corrida; scroll aproxima/afasta e arrastar com o botão direito orbita. A câmera respeita o chão, mas ainda não evita paredes ou árvores. A pose parada volta à bind pose até ser adicionado um clip `Idle`; texturas ainda não são renderizadas.
 
-The console prints OpenGL version, vendor, renderer and GLSL version, then `[app] Character Equipment Test running` and the controls.
+The console prints OpenGL version, vendor, renderer and GLSL version, loaded mesh/bone/clip counts, and controls. It explains when no animation or idle clip is present.
 
-## Verificação do protótipo atual
-
-Esta lista verifica a cena existente; o escopo dos marcos está no [roadmap](docs/roadmap.md).
+## Marco 003 acceptance
 
 - [ ] CMake configure succeeds with MSVC x64 and the vcpkg toolchain
 - [ ] `mmo_client` links without errors
-- [ ] A window titled `MMO Engine - Character Equipment Test` appears
-- [ ] A 3D ground plane and a controllable character are visible
+- [ ] A window titled `MMO Engine - Character Preview` appears
+- [ ] A 3D ground plane and a controllable GLB character are visible
 - [ ] WASD moves the character
-- [ ] Equipment groups can be toggled and recolored in the test scene
-- [ ] A real skinned GLB drives the skeleton (not implemented; requires a model asset and GLTF loader)
+- [ ] Embedded `LINEAR`/`STEP` animation clips play when movement is active
 - [ ] Resize still fills the framebuffer (viewport callback)
 - [ ] Escape or close destroys the context and returns 0
 - [ ] Console shows GL version **3.3** or higher in a **Core** context
@@ -141,17 +138,7 @@ Esta lista verifica a cena existente; o escopo dos marcos está no [roadmap](doc
 
 ## Tests
 
-`domain` verifica movimento, pilhas de itens, câmera, cena, substituição de meshes de equipamento e o componente de animação procedural em blocos. `CharacterEquipmentTest` preserva os testes de modelos/esqueletos sintéticos, crossfade, skin matrices, slots, attachments, substituição e remoção de equipamento.
-
-```powershell
-cmake --build --preset vs2026-debug
-ctest --test-dir build-vs2026-marco001 -C Debug --output-on-failure
-```
-
-Com Visual Studio 2022, use `vs2022-debug` e `ctest --test-dir build -C Debug --output-on-failure`.
-Para compilar ambos os testes sem GLFW/OpenGL, configure um diretório separado com
-`-DMMO_BUILD_CLIENT=OFF`. GLM continua necessário; use a toolchain vcpkg ou uma
-instalação nativa descoberta pelo CMake. A cena procedural não usa ainda um GLB real.
+`CharacterEquipmentTest` validates synthetic model/skeleton data, animation state/crossfade and skin matrices, all equipment slots, attachment resolution, replacement, unequip and failure atomicity without opening a window. Run it with the `ctest` command above. GPU rendering and import of the user-provided GLB are runtime checks.
 
 ## License of content
 

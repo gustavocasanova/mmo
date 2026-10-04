@@ -74,7 +74,10 @@ typedef ptrdiff_t GLsizeiptr;
 #define GL_FLOAT 0x1406
 #define GL_UNSIGNED_INT 0x1405
 #define GL_ARRAY_BUFFER 0x8892
+#define GL_UNIFORM_BUFFER 0x8A11
 #define GL_STATIC_DRAW 0x88E4
+#define GL_DYNAMIC_DRAW 0x88E8
+#define GL_INVALID_INDEX 0xFFFFFFFFu
 #define GL_FRAGMENT_SHADER 0x8B30
 #define GL_VERTEX_SHADER 0x8B31
 #define GL_COMPILE_STATUS 0x8B81
@@ -100,6 +103,8 @@ typedef void (APIENTRYP PFNGLDELETEVERTEXARRAYSPROC)(GLsizei n, const GLuint *ar
 typedef void (APIENTRYP PFNGLGENBUFFERSPROC)(GLsizei n, GLuint *buffers);
 typedef void (APIENTRYP PFNGLBINDBUFFERPROC)(GLenum target, GLuint buffer);
 typedef void (APIENTRYP PFNGLBUFFERDATAPROC)(GLenum target, GLsizeiptr size, const void *data, GLenum usage);
+typedef void (APIENTRYP PFNGLBUFFERSUBDATAPROC)(GLenum target, GLintptr offset, GLsizeiptr size, const void *data);
+typedef void (APIENTRYP PFNGLBINDBUFFERBASEPROC)(GLenum target, GLuint index, GLuint buffer);
 typedef void (APIENTRYP PFNGLDELETEBUFFERSPROC)(GLsizei n, const GLuint *buffers);
 typedef void (APIENTRYP PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint index);
 typedef void (APIENTRYP PFNGLVERTEXATTRIBPOINTERPROC)(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
@@ -114,6 +119,8 @@ typedef void (APIENTRYP PFNGLATTACHSHADERPROC)(GLuint program, GLuint shader);
 typedef void (APIENTRYP PFNGLLINKPROGRAMPROC)(GLuint program);
 typedef void (APIENTRYP PFNGLGETPROGRAMIVPROC)(GLuint program, GLenum pname, GLint *params);
 typedef void (APIENTRYP PFNGLGETPROGRAMINFOLOGPROC)(GLuint program, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
+typedef GLuint (APIENTRYP PFNGLGETUNIFORMBLOCKINDEXPROC)(GLuint program, const GLchar *uniformBlockName);
+typedef void (APIENTRYP PFNGLUNIFORMBLOCKBINDINGPROC)(GLuint program, GLuint uniformBlockIndex, GLuint uniformBlockBinding);
 typedef void (APIENTRYP PFNGLUSEPROGRAMPROC)(GLuint program);
 typedef void (APIENTRYP PFNGLDELETEPROGRAMPROC)(GLuint program);
 typedef GLint (APIENTRYP PFNGLGETUNIFORMLOCATIONPROC)(GLuint program, const GLchar *name);
@@ -135,6 +142,8 @@ GLAPI PFNGLDELETEVERTEXARRAYSPROC glad_glDeleteVertexArrays;
 GLAPI PFNGLGENBUFFERSPROC glad_glGenBuffers;
 GLAPI PFNGLBINDBUFFERPROC glad_glBindBuffer;
 GLAPI PFNGLBUFFERDATAPROC glad_glBufferData;
+GLAPI PFNGLBUFFERSUBDATAPROC glad_glBufferSubData;
+GLAPI PFNGLBINDBUFFERBASEPROC glad_glBindBufferBase;
 GLAPI PFNGLDELETEBUFFERSPROC glad_glDeleteBuffers;
 GLAPI PFNGLENABLEVERTEXATTRIBARRAYPROC glad_glEnableVertexAttribArray;
 GLAPI PFNGLVERTEXATTRIBPOINTERPROC glad_glVertexAttribPointer;
@@ -149,6 +158,8 @@ GLAPI PFNGLATTACHSHADERPROC glad_glAttachShader;
 GLAPI PFNGLLINKPROGRAMPROC glad_glLinkProgram;
 GLAPI PFNGLGETPROGRAMIVPROC glad_glGetProgramiv;
 GLAPI PFNGLGETPROGRAMINFOLOGPROC glad_glGetProgramInfoLog;
+GLAPI PFNGLGETUNIFORMBLOCKINDEXPROC glad_glGetUniformBlockIndex;
+GLAPI PFNGLUNIFORMBLOCKBINDINGPROC glad_glUniformBlockBinding;
 GLAPI PFNGLUSEPROGRAMPROC glad_glUseProgram;
 GLAPI PFNGLDELETEPROGRAMPROC glad_glDeleteProgram;
 GLAPI PFNGLGETUNIFORMLOCATIONPROC glad_glGetUniformLocation;
@@ -170,6 +181,8 @@ GLAPI PFNGLENABLEPROC glad_glEnable;
 #define glGenBuffers glad_glGenBuffers
 #define glBindBuffer glad_glBindBuffer
 #define glBufferData glad_glBufferData
+#define glBufferSubData glad_glBufferSubData
+#define glBindBufferBase glad_glBindBufferBase
 #define glDeleteBuffers glad_glDeleteBuffers
 #define glEnableVertexAttribArray glad_glEnableVertexAttribArray
 #define glVertexAttribPointer glad_glVertexAttribPointer
@@ -184,6 +197,8 @@ GLAPI PFNGLENABLEPROC glad_glEnable;
 #define glLinkProgram glad_glLinkProgram
 #define glGetProgramiv glad_glGetProgramiv
 #define glGetProgramInfoLog glad_glGetProgramInfoLog
+#define glGetUniformBlockIndex glad_glGetUniformBlockIndex
+#define glUniformBlockBinding glad_glUniformBlockBinding
 #define glUseProgram glad_glUseProgram
 #define glDeleteProgram glad_glDeleteProgram
 #define glGetUniformLocation glad_glGetUniformLocation

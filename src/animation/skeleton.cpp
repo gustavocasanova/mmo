@@ -118,6 +118,7 @@ Value sample_keyframes(
     const std::vector<float>& times,
     const std::vector<Value>& values,
     float time,
+    Interpolation interpolation,
     Value fallback)
 {
     if (times.empty() || values.empty() || times.size() != values.size()) {
@@ -133,6 +134,9 @@ Value sample_keyframes(
     const auto upper = std::upper_bound(times.begin(), times.end(), time);
     const std::size_t next = static_cast<std::size_t>(upper - times.begin());
     const std::size_t previous = next - 1;
+    if (interpolation == Interpolation::Step) {
+        return values[previous];
+    }
     const float interval = times[next] - times[previous];
     const float factor = interval > 0.0f ? (time - times[previous]) / interval : 0.0f;
     if constexpr (std::is_same_v<Value, Quaternion>) {
@@ -477,13 +481,13 @@ void Animator::sample_clip(
         Transform& transform = transforms[channel.bone_index];
         transform.translation = sample_keyframes(
             channel.translations.times, channel.translations.values,
-            time_seconds, transform.translation);
+            time_seconds, channel.translations.interpolation, transform.translation);
         transform.rotation = sample_keyframes(
             channel.rotations.times, channel.rotations.values,
-            time_seconds, transform.rotation);
+            time_seconds, channel.rotations.interpolation, transform.rotation);
         transform.scale = sample_keyframes(
             channel.scales.times, channel.scales.values,
-            time_seconds, transform.scale);
+            time_seconds, channel.scales.interpolation, transform.scale);
     }
 }
 
