@@ -444,6 +444,31 @@ void Animator::rebuild_pose()
         }
     }
 
+    resolve_pose(pose_);
+}
+
+const AnimationClip& Animator::clip(std::size_t clip_index) const
+{
+    return clips_.at(clip_index);
+}
+
+void Animator::sample_clip_pose(
+    std::size_t clip_index,
+    float time_seconds,
+    std::vector<BoneTransform>& transforms) const
+{
+    transforms.clear();
+    transforms.reserve(skeleton_.bones.size());
+    for (const Bone& bone : skeleton_.bones) {
+        transforms.push_back(bone.bind_local_transform);
+    }
+    sample_clip(clips_.at(clip_index), time_seconds, transforms);
+}
+
+void Animator::resolve_pose(Pose& pose) const
+{
+    pose.global_matrices.resize(skeleton_.bones.size(), identity_matrix());
+    pose.skin_matrices.resize(skeleton_.bones.size(), identity_matrix());
     std::vector<bool> resolved(skeleton_.bones.size(), false);
     const auto resolve = [&](auto&& self, std::size_t joint_index) -> void {
         if (resolved[joint_index]) {
@@ -452,20 +477,20 @@ void Animator::rebuild_pose()
         const std::size_t parent = skeleton_.bones[joint_index].parent_index;
         if (parent != kNoParent && parent < skeleton_.bones.size()) {
             self(self, parent);
-            pose_.global_matrices[joint_index] = multiply(
-                pose_.global_matrices[parent],
-                transform_matrix(pose_.local_transforms[joint_index]));
+            pose.global_matrices[joint_index] = multiply(
+                pose.global_matrices[parent],
+                transform_matrix(pose.local_transforms[joint_index]));
         } else {
-            pose_.global_matrices[joint_index] =
-                transform_matrix(pose_.local_transforms[joint_index]);
+            pose.global_matrices[joint_index] =
+                transform_matrix(pose.local_transforms[joint_index]);
         }
         resolved[joint_index] = true;
     };
 
     for (std::size_t bone = 0; bone < skeleton_.bones.size(); ++bone) {
         resolve(resolve, bone);
-        pose_.skin_matrices[bone] = multiply(
-            pose_.global_matrices[bone], skeleton_.bones[bone].inverse_bind_matrix);
+        pose.skin_matrices[bone] = multiply(
+            pose.global_matrices[bone], skeleton_.bones[bone].inverse_bind_matrix);
     }
 }
 

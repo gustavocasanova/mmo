@@ -20,8 +20,6 @@ struct EditorCameraSettings {
     float field_of_view = 1.04719755f;
     float near_plane = 0.05f;
     float far_plane = 1000.0f;
-    bool invert_mouse_x = true;
-    bool invert_mouse_y = true;
 };
 
 struct EditorCameraInput {

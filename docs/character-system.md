@@ -43,3 +43,14 @@ The controller derives `Idle`, `Walking`, `Running`, `Jumping` or `Falling` from
 Hold the right mouse button and move to orbit; release it to free the cursor. The wheel changes the chosen zoom. The demo's two visible walls can be used to test character and camera collision.
 
 `CharacterControllerTest` covers camera-relative direction, diagonal normalization, movement acceleration, jumping/gravity/landing and wall blocking. `CharacterEquipmentTest` continues to validate the model, skeleton, equipment and animation-pack loading contracts.
+
+## Layered animation (movement + combat)
+
+Movement and combat are independent. `CharacterController` owns `MovementState` (Idle, Walk, Run, StrafeLeft, StrafeRight, Backward) and drives the lower-body layer (the `Animator`). `CombatController` owns `CombatState` (None, Attack, Attack2, Block, Cast) and drives the upper-body layer through `AnimationController::play_action`. `AnimationMixer` (`src/animation/layered_animation.*`) blends the one-shot action clip over the locomotion pose using a `BoneMask`: `FinalPose = Blend(LowerPose, UpperPose, mask * layerWeight)`. No combined clips exist; attacking never restarts or replaces the locomotion clip, and movement input is never blocked.
+
+- The mask is built from the real skeleton: the first existing candidate of `spine_01`/`Spine`/`spine` plus all its descendants (spine, chest, clavicles, arms, hands, fingers, neck, head). `root`, `pelvis` and legs stay in the lower layer, so action clips cannot displace the character; the controller remains the only owner of position.
+- The layer weight blends in over `blend_in`, holds, and blends out over `blend_out` before the action ends (smoothstep).
+- `ActionSettings`/`CombatActionDefinition` expose duration, speed, `hit_time`, `blend_in` and `blend_out`. A running action is not restarted; a new one is accepted during blend-out.
+- The mixer emits `ActionStart`/`ActionHit`/`ActionEnd` events; `CombatController` translates them to `AttackStart`/`AttackHit`/`AttackEnd` for the `CombatSystem`, which decides on damage/effects. The animation never applies damage.
+- Client input: left mouse or `1` = Attack, `2` = Attack 2, `3` = Cast. `F3` toggles a console debug line with movement/combat state, lower/upper clips and weights, attack time, mask bone count and active layers. `Block` has no clip in the animation pack and is not bound by default. The pack has no strafe clips, so strafing reuses the walk clip.
+- Tests: `AnimationLayersTest` (mask, blend, events, weights) and `CharacterControllerTest` (walk + attack with the real skeleton).

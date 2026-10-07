@@ -12,9 +12,12 @@ A próxima etapa é completar o Mundo 3D do Marco 003, principalmente carregamen
 - [x] **Marco 2 — Editor Camera:** câmera fly dedicada, WASD, Q/E, mouse look (RMB), modificadores Shift/Ctrl e ajuste de velocidade na roda.
 - [ ] Órbita e pan da câmera de edição ainda pendentes.
 - [x] **Marco 3 — Selection:** raycast da câmera, selecionar/limpar com clique esquerdo, escolha do objeto mais próximo e highlight visual dos objetos selecionáveis atuais; F enquadra o alvo selecionado.
-- [ ] Marcos seguintes: transformação, hierarquia e assets, ferramentas avançadas de terreno, serialização completa de mundo e undo/redo.
+- [ ] **Marco 4 — Transform (implementação e testes CPU concluídos; validação visual pendente):** mover, rotacionar e redimensionar os objetos selecionáveis; gizmos nos eixos XYZ, seleção de eixo, espaço world/local e snap de grid/rotação/escala. Arraste com o botão esquerdo aplica a transformação no eixo ativo; M/R/T escolhem mover/rotacionar/redimensionar, X/Y/Z/U escolhem o eixo, G alterna snap e C alterna espaço.
+- [ ] **Marco 5 — World Hierarchy (implementação e testes CPU concluídos; validação visual pendente):** painel gráfico Hierarchy/Inspector com seleção, renomear, editar transform, duplicar e apagar objetos.
+- [ ] **Marco 6 — Asset Browser (implementação e testes CPU concluídos; validação visual pendente):** catálogo de GLB/glTF e prefabs versionados, busca, criação de prefab e arrastar assets para a viewport para instanciar modelos estáticos selecionáveis.
+- [ ] Marcos seguintes: ferramentas avançadas de terreno, serialização completa de mundo e undo/redo.
 
-Validação: testes CPU de modo, câmera e seleção; confirmar na janela F1 alternando os modos. O Marco 1 mantém movimento/pulo do personagem exclusivos do Game Mode. No editor, a câmera fly permite navegação e foco da seleção; órbita/pan ainda não estão disponíveis.
+Validação: testes CPU de modo, câmera, seleção, transformações, CRUD do Hierarchy/Inspector, catálogo de assets, manifests de prefab e conversão de modelos estáticos passaram. O cliente compila. Falta confirmar visualmente na janela os painéis, o drag & drop e a instanciação. O Asset Browser indexa `assets/`, `content/`, `personagem/` e `Universal Animation Library[Standard]/`; modelos com skin e texturas ainda não são suportados como instâncias do editor. Movimento e pulo do personagem permanecem exclusivos do Game Mode. A câmera de terceira pessoa e a câmera do editor usam movimento do mouse para olhar para cima/baixo no sentido esperado. Órbita/pan da câmera de edição ainda não estão disponíveis.
 
 ## Marco 001 — Janela e triângulo
 

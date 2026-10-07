@@ -10,6 +10,7 @@
 #include <optional>
 #include <span>
 #include <cstdint>
+#include <string>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
@@ -21,6 +22,12 @@ struct RenderBox {
     glm::vec3 half_extents;
     glm::vec3 rotation_degrees;
     glm::vec3 scale;
+    std::string asset_path;
+};
+
+struct ModelBounds {
+    glm::vec3 minimum;
+    glm::vec3 maximum;
 };
 
 enum class GizmoMode {
@@ -36,6 +43,12 @@ struct CharacterPlacement {
     float yaw;
 };
 
+struct EnemyRenderInstance {
+    CharacterPlacement placement;
+    glm::vec3 tint;
+    std::span<const animation::Matrix4> skin_matrices;
+};
+
 class Renderer {
 public:
     Renderer();
@@ -44,7 +57,14 @@ public:
     ~Renderer();
 
     void set_character_model(const assets::Model& model);
+    [[nodiscard]] ModelBounds register_editor_model(
+        const std::string& asset_path,
+        const assets::Model& model);
     void set_skinning_matrices(std::span<const animation::Matrix4> matrices);
+    // Extra skinned instances of the character mesh (enemies, NPCs).
+    void set_enemies(std::span<const EnemyRenderInstance> enemies);
+    // Ground ring under the current target; decoupled from any gameplay system.
+    void set_target_indicator(bool visible, glm::vec3 center, float radius, glm::vec3 color);
     void set_terrain(const game::world::Terrain& terrain);
     void set_brush_cursor(
         const game::world::Terrain& terrain,
@@ -62,7 +82,8 @@ public:
         std::span<const RenderBox> editor_boxes = {},
         bool show_editor_gizmo = false,
         glm::vec3 gizmo_position = glm::vec3{0.0f},
-        GizmoMode gizmo_mode = GizmoMode::translate) const;
+        GizmoMode gizmo_mode = GizmoMode::translate,
+        bool gizmo_local_space = false) const;
 
 private:
     struct Impl;

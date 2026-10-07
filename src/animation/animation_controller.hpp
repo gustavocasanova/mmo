@@ -1,5 +1,6 @@
 #pragma once
 
+#include "animation/layered_animation.hpp"
 #include "animation/skeleton.hpp"
 
 #include <array>
@@ -30,6 +31,16 @@ public:
     void update(float delta_seconds);
     void stop();
 
+    // Upper-body layer: configure the mask once, then play one-shot actions over any locomotion.
+    void set_upper_body_mask(BoneMask mask);
+    [[nodiscard]] bool play_action(std::string_view clip_name, const ActionSettings& settings);
+    void cancel_action();
+    // Events produced since the last call (ActionStart/ActionHit/ActionEnd).
+    [[nodiscard]] std::vector<AnimationEvent> take_events();
+    [[nodiscard]] const AnimationMixer& mixer() const;
+    [[nodiscard]] std::string_view lower_clip_name() const;
+    [[nodiscard]] std::string_view upper_clip_name() const;
+
     [[nodiscard]] AnimationState state() const;
     [[nodiscard]] const Pose& pose() const;
     [[nodiscard]] const Animator& animator() const;
@@ -43,6 +54,9 @@ private:
     static constexpr std::size_t kStateCount = static_cast<std::size_t>(AnimationState::Count);
 
     Animator animator_;
+    AnimationMixer mixer_;
+    Pose mixed_pose_;
+    std::vector<AnimationEvent> events_;
     std::array<StateBinding, kStateCount> bindings_{};
     AnimationState state_ = AnimationState::Idle;
     bool has_state_ = false;

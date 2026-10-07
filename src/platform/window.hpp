@@ -14,16 +14,24 @@ enum class Key {
     Q,
     Space,
     F,
-    G,
     LeftShift,
     LeftBracket,
     RightBracket,
     E,
     F1,
     F2,
-    C,
+    F3,
+    Tab,
     L,
     LeftControl,
+    G,
+    C,
+    M,
+    R,
+    U,
+    X,
+    Y,
+    Z,
     Digit0,
     Digit1,
     Digit2,
@@ -34,11 +42,6 @@ enum class Key {
     Digit7,
     Digit8,
     Digit9,
-    X,
-    Y,
-    Z,
-    R,
-    U,
     T,
 };
 
@@ -71,6 +74,7 @@ public:
     void poll_events() const;
     void framebuffer_size(int& width, int& height) const;
     void swap_buffers() const;
+    [[nodiscard]] ::GLFWwindow* native_handle() const;
 
     static GraphicsProcAddress get_proc_address(const char* name);
 

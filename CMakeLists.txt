@@ -29,6 +29,7 @@ endif()
 find_package(glfw3 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(fastgltf CONFIG REQUIRED)
+find_package(imgui CONFIG REQUIRED)
 
 add_library(glad STATIC
     third_party/glad/src/gl.c)
@@ -41,13 +42,17 @@ set_target_properties(glad PROPERTIES
 add_library(mmo_character STATIC
     src/animation/animation_controller.cpp
     src/animation/skeleton.cpp
+    src/animation/layered_animation.cpp
+    src/character/combat.cpp
     src/assets/gltf_model_loader.cpp
     src/assets/model.cpp
+    src/assets/static_model_geometry.cpp
     src/character/character.cpp
     src/character/character_controller.cpp
     src/character/character_body.cpp
     src/character/character_model.cpp
     src/equipment/equipment.cpp
+    src/game/combat/combat.cpp
     src/game/world/collision_world.cpp
     src/game/world/terrain.cpp
 )
@@ -57,6 +62,7 @@ target_compile_features(mmo_character PUBLIC cxx_std_20)
 target_link_libraries(mmo_character PUBLIC glm::glm PRIVATE fastgltf::fastgltf)
 
 add_library(mmo_editor STATIC
+    src/editor/asset_database.cpp
     src/editor/editor_camera.cpp
     src/editor/selection.cpp
     src/editor/world_editor.cpp)
@@ -68,6 +74,8 @@ target_link_libraries(mmo_editor PUBLIC glm::glm)
 add_executable(mmo_client
     src/apps/client/main.cpp
     src/apps/client/application.cpp
+    src/apps/client/target_frame.cpp
+    src/editor/editor_ui.cpp
     src/platform/window.cpp
     src/renderer/renderer.cpp
     src/renderer/opengl/mesh.cpp
@@ -84,7 +92,8 @@ target_link_libraries(mmo_client PRIVATE
     glm::glm
     glad
     mmo_character
-    mmo_editor)
+    mmo_editor
+    imgui::imgui)
 
 if(BUILD_TESTING)
     add_executable(mmo_character_tests
@@ -112,12 +121,20 @@ if(BUILD_TESTING)
     set_tests_properties(CharacterControllerTest PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
+    add_executable(mmo_animation_layers_tests tests/animation_layers_test.cpp)
+    target_link_libraries(mmo_animation_layers_tests PRIVATE mmo_character)
+    add_test(NAME AnimationLayersTest COMMAND mmo_animation_layers_tests)
+
+    add_executable(mmo_combat_tests tests/combat_test.cpp)
+    target_link_libraries(mmo_combat_tests PRIVATE mmo_character)
+    add_test(NAME CombatTest COMMAND mmo_combat_tests)
+
     add_executable(mmo_terrain_tests tests/terrain_test.cpp)
     target_link_libraries(mmo_terrain_tests PRIVATE mmo_character)
     add_test(NAME TerrainTest COMMAND mmo_terrain_tests)
 
     add_executable(mmo_world_editor_tests tests/world_editor_mode_test.cpp)
-    target_link_libraries(mmo_world_editor_tests PRIVATE mmo_editor)
+    target_link_libraries(mmo_world_editor_tests PRIVATE mmo_editor mmo_character)
     add_test(NAME WorldEditorModeTest COMMAND mmo_world_editor_tests)
 endif()
 
@@ -133,6 +150,8 @@ if(MSVC)
         target_compile_options(mmo_character_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
         target_compile_options(mmo_camera_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
         target_compile_options(mmo_controller_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
+        target_compile_options(mmo_animation_layers_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
+        target_compile_options(mmo_combat_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
         target_compile_options(mmo_terrain_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
         target_compile_options(mmo_world_editor_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
     endif()

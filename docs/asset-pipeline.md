@@ -30,3 +30,16 @@ assets/
 ```
 
 O asset de trabalho está em `personagem/`; migrá-lo para `assets/` quando o pipeline de conteúdo estiver definido. fastgltf é dependência do cliente para importação GLB/glTF.
+
+## World Editor — Asset Browser
+
+O catálogo do editor percorre somente `assets/`, `content/`, `personagem/` e `Universal Animation Library[Standard]/`; `.git`, diretórios de build e caches fora dessas raízes não são indexados. A extensão `.glb`/`.gltf` é verificada sem diferenciar maiúsculas/minúsculas. Os manifests `.mmoprefab` são encontrados dentro dessas raízes e usam o formato:
+
+```text
+MMO_PREFAB 1
+model=assets/characters/prop.glb
+```
+
+O caminho do modelo é relativo à raiz do projeto e precisa apontar para um modelo indexado. Prefabs armazenados pelo editor ficam em `content/prefabs/`; eles reutilizam a geometria do modelo referenciado e não serializam o mundo. Arrastar modelo ou prefab para a viewport cria uma instância selecionável e centrada no ponto atingido do terreno.
+
+Nesta etapa o renderer aceita apenas modelos estáticos. Modelos com skeleton/pesos de skinning são rejeitados explicitamente; materiais e texturas ainda não são aplicados à instância.

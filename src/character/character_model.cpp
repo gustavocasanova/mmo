@@ -3,12 +3,26 @@
 #include <utility>
 
 namespace mmo::character {
+namespace {
+
+// Candidate names for the first torso bone, checked against the real skeleton at load time.
+constexpr std::array<std::string_view, 3> kUpperBodyRootCandidates{
+    "spine_01", "Spine", "spine"};
+
+}
 
 CharacterModel::CharacterModel(std::shared_ptr<const assets::Model> body_model)
     : body_(std::move(body_model))
     , equipment_(body_.skeleton())
     , animation_(body_.skeleton(), body_.model().animations)
 {
+    for (const std::string_view candidate : kUpperBodyRootCandidates) {
+        if (body_.skeleton().find_bone(candidate)) {
+            animation_.set_upper_body_mask(
+                animation::BoneMask::branch(body_.skeleton(), candidate));
+            break;
+        }
+    }
 }
 
 const CharacterBody& CharacterModel::body() const

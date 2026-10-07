@@ -1,5 +1,6 @@
 #include "renderer/renderer.hpp"
 
+#include "assets/static_model_geometry.hpp"
 #include "platform/window.hpp"
 #include "renderer/mesh.hpp"
 #include "renderer/shader.hpp"
@@ -7,6 +8,7 @@
 #include "scene/material.hpp"
 
 #include <glad/gl.h>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
@@ -15,7 +17,9 @@
 #include <cstddef>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace mmo::renderer {
@@ -437,6 +441,12 @@ void log_gl_info()
 }
 
 struct Renderer::Impl {
+    struct EditorModel {
+        std::unique_ptr<Mesh> mesh;
+        glm::vec3 minimum;
+        glm::vec3 maximum;
+    };
+
     scene::Camera camera;
     Shader program{kVertexShaderSource, kFragmentShaderSource};
     Mesh ground{make_ground_vertices()};
@@ -445,6 +455,15 @@ struct Renderer::Impl {
     Mesh gizmo{make_box_vertices()};
     Mesh character{make_placeholder_vertices()};
     std::vector<glm::mat4> skinning_matrices;
+    struct EnemyDraw {
+        CharacterPlacement placement{0.0f, 0.0f, 0.0f, 0.0f};
+        glm::vec3 tint{1.0f};
+        std::vector<glm::mat4> matrices;
+    };
+    std::vector<EnemyDraw> enemies;
+    Mesh target_ring{make_brush_ring_vertices()};
+    glm::vec3 target_ring_color{1.0f};
+    bool target_ring_visible = false;
     std::vector<glm::mat4> bind_pose_matrices;
     unsigned int skinning_buffer = 0;
     glm::vec3 character_offset{0.0f};
@@ -454,6 +473,7 @@ struct Renderer::Impl {
     bool brush_cursor_visible = false;
     scene::Material character_material{{1.0f, 1.0f, 1.0f},
         scene::SurfacePattern::solid};
+    std::unordered_map<std::string, EditorModel> editor_models;
 
     Impl()
     {
@@ -488,6 +508,39 @@ Renderer::Renderer()
 }
 
 Renderer::~Renderer() = default;
+
+ModelBounds Renderer::register_editor_model(
+    const std::string& asset_path,
+    const assets::Model& model)
+{
+    if (asset_path.empty()) {
+        throw std::invalid_argument("editor model asset path must not be empty");
+    }
+    const auto existing = impl_->editor_models.find(asset_path);
+    if (existing != impl_->editor_models.end()) {
+        return {existing->second.minimum, existing->second.maximum};
+    }
+
+    const assets::StaticModelGeometry geometry =
+        assets::build_static_model_geometry(model);
+    std::vector<MeshVertex> vertices;
+    vertices.reserve(geometry.vertices.size());
+    for (const assets::ModelVertex& source : geometry.vertices) {
+        vertices.push_back({
+            {source.position[0], source.position[1], source.position[2]},
+            {source.normal[0], source.normal[1], source.normal[2]},
+            {source.color[0], source.color[1], source.color[2]},
+            {},
+            {},
+        });
+    }
+    auto mesh = std::make_unique<Mesh>(vertices);
+    const auto [entry, inserted] = impl_->editor_models.emplace(
+        asset_path, Impl::EditorModel{
+            std::move(mesh), geometry.minimum, geometry.maximum});
+    (void)inserted;
+    return {entry->second.minimum, entry->second.maximum};
+}
 
 void Renderer::set_character_model(const assets::Model& model)
 {
@@ -529,6 +582,58 @@ void Renderer::set_character_model(const assets::Model& model)
     for (const animation::Matrix4& matrix : bind_pose.pose().skin_matrices) {
         impl_->bind_pose_matrices.push_back(glm::make_mat4(matrix.data()));
     }
+}
+
+void Renderer::set_enemies(std::span<const EnemyRenderInstance> enemies)
+{
+    impl_->enemies.clear();
+    for (const EnemyRenderInstance& enemy : enemies) {
+        if (enemy.skin_matrices.size() > kMaxSkinningBones) {
+            throw std::length_error("OpenGL skinning palette exceeds its bone limit");
+        }
+        Impl::EnemyDraw draw;
+        draw.placement = enemy.placement;
+        draw.tint = enemy.tint;
+        for (const animation::Matrix4& matrix : enemy.skin_matrices) {
+            draw.matrices.push_back(glm::make_mat4(matrix.data()));
+        }
+        impl_->enemies.push_back(std::move(draw));
+    }
+}
+
+void Renderer::set_target_indicator(
+    bool visible, glm::vec3 center, float radius, glm::vec3 color)
+{
+    impl_->target_ring_visible = visible;
+    if (!visible) {
+        return;
+    }
+    if (!std::isfinite(radius) || radius <= 0.0f) {
+        throw std::invalid_argument("target indicator radius must be positive");
+    }
+    constexpr int segments = 48;
+    constexpr float thickness = 0.92f;
+    constexpr float two_pi = 6.28318530718f;
+    std::vector<MeshVertex> vertices;
+    vertices.reserve(segments * 6);
+    const auto point = [&](float angle, float distance) {
+        return glm::vec3{center.x + std::cos(angle) * distance, center.y + 0.04f,
+            center.z + std::sin(angle) * distance};
+    };
+    for (int segment = 0; segment < segments; ++segment) {
+        const float first = two_pi * static_cast<float>(segment) / segments;
+        const float second = two_pi * static_cast<float>(segment + 1) / segments;
+        const glm::vec3 normal{0.0f, 1.0f, 0.0f};
+        const glm::vec3 white{1.0f, 1.0f, 1.0f};
+        const glm::vec3 corners[6] = {point(first, radius), point(second, radius * thickness),
+            point(second, radius), point(first, radius), point(first, radius * thickness),
+            point(second, radius * thickness)};
+        for (const glm::vec3& corner : corners) {
+            vertices.push_back({corner, normal, white, {}, {}});
+        }
+    }
+    impl_->target_ring.update(vertices);
+    impl_->target_ring_color = color;
 }
 
 void Renderer::set_skinning_matrices(std::span<const animation::Matrix4> matrices)
@@ -623,7 +728,8 @@ void Renderer::render(
     std::span<const RenderBox> editor_boxes,
     bool show_editor_gizmo,
     glm::vec3 gizmo_position,
-    GizmoMode gizmo_mode) const
+    GizmoMode gizmo_mode,
+    bool gizmo_local_space) const
 {
     if (framebuffer_width <= 0 || framebuffer_height <= 0) {
         return;
@@ -678,10 +784,15 @@ void Renderer::render(
         impl_->program.set_vec3("u_tint", {1.0f, 0.82f, 0.18f});
         impl_->brush_ring.draw();
     }
+    if (impl_->target_ring_visible) {
+        impl_->program.set_int("u_is_skinned", 0);
+        impl_->program.set_int("u_is_ground", 0);
+        impl_->program.set_vec3("u_tint", impl_->target_ring_color);
+        impl_->target_ring.draw();
+    }
 
     impl_->program.set_int("u_is_skinned", 0);
     impl_->program.set_int("u_is_ground", 0);
-    impl_->program.set_int("u_is_skinned", 0);
     if (!editor_boxes.empty()) {
         for (const RenderBox& box : editor_boxes) {
             glm::mat4 model{1.0f};
@@ -693,13 +804,23 @@ void Renderer::render(
             model = glm::rotate(model, glm::radians(box.rotation_degrees.z),
                 {0.0f, 0.0f, 1.0f});
             model = glm::scale(model, box.half_extents * 2.0f * box.scale);
-            model = glm::translate(model, {0.0f, -0.5f, 0.0f});
             set_matrices(from_glm(model));
             const bool selected = selected_object && *selected_object == box.id;
             impl_->program.set_vec3("u_tint", selected
                 ? glm::vec3{1.0f, 0.72f, 0.12f}
                 : glm::vec3{0.46f, 0.39f, 0.30f});
-            impl_->wall.draw();
+            if (box.asset_path.empty()) {
+                model = glm::translate(model, {-0.5f, -0.5f, -0.5f});
+                set_matrices(from_glm(model));
+                impl_->wall.draw();
+            } else {
+                const auto model_asset = impl_->editor_models.find(box.asset_path);
+                if (model_asset == impl_->editor_models.end()) {
+                    throw std::runtime_error(
+                        "editor object references an unregistered model: " + box.asset_path);
+                }
+                model_asset->second.mesh->draw();
+            }
         }
     } else {
         std::uint64_t object_id = 1;
@@ -725,7 +846,6 @@ void Renderer::render(
     }
 
     if (show_editor_gizmo) {
-        const glm::mat4 origin = glm::translate(glm::mat4{1.0f}, gizmo_position);
         constexpr float shaft_radius = 0.035f;
         constexpr float shaft_length = 1.25f;
         const std::array<glm::vec3, 3> colors{
@@ -743,8 +863,22 @@ void Renderer::render(
             glm::vec3{0.0f},
             glm::vec3{1.57079633f, 0.0f, 0.0f},
         };
+        glm::mat4 origin = glm::translate(glm::mat4{1.0f}, gizmo_position);
+        if (gizmo_local_space && selected_object) {
+            const auto selected_box = std::find_if(editor_boxes.begin(), editor_boxes.end(),
+                [selected_object](const RenderBox& box) {
+                    return box.id == *selected_object;
+                });
+            if (selected_box != editor_boxes.end()) {
+                origin = glm::rotate(origin,
+                    glm::radians(selected_box->rotation_degrees.y), {0.0f, 1.0f, 0.0f});
+                origin = glm::rotate(origin,
+                    glm::radians(selected_box->rotation_degrees.x), {1.0f, 0.0f, 0.0f});
+                origin = glm::rotate(origin,
+                    glm::radians(selected_box->rotation_degrees.z), {0.0f, 0.0f, 1.0f});
+            }
+        }
         if (gizmo_mode == GizmoMode::rotate) {
-            glDisable(GL_CULL_FACE);
             impl_->program.set_int("u_is_skinned", 0);
             impl_->program.set_int("u_is_ground", 0);
             impl_->program.set_vec3("u_tint", {1.0f, 1.0f, 1.0f});
@@ -752,8 +886,7 @@ void Renderer::render(
                 std::vector<MeshVertex> ring;
                 constexpr int segments = 64;
                 constexpr float inner_radius = 0.96f;
-                constexpr float outer_radius = 1.0f;
-                ring.reserve(segments * 6);
+                ring.reserve(segments * 12);
                 const auto point = [axis](float angle, float radius) {
                     const float first = std::cos(angle) * radius;
                     const float second = std::sin(angle) * radius;
@@ -763,29 +896,31 @@ void Renderer::render(
                 };
                 for (int segment = 0; segment < segments; ++segment) {
                     const float first_angle = 6.28318530718f * segment / segments;
-                    const float second_angle = 6.28318530718f * (segment + 1) / segments;
-                    const glm::vec3 outer_first = point(first_angle, outer_radius);
-                    const glm::vec3 outer_second = point(second_angle, outer_radius);
-                    const glm::vec3 inner_first = point(first_angle, inner_radius);
-                    const glm::vec3 inner_second = point(second_angle, inner_radius);
+                    const float second_angle =
+                        6.28318530718f * (segment + 1) / segments;
                     const glm::vec3 normal = axes[axis];
-                    const glm::vec3 color = colors[axis];
+                    const glm::vec3 outer_first = point(first_angle, 1.0f);
+                    const glm::vec3 inner_first = point(first_angle, inner_radius);
+                    const glm::vec3 outer_second = point(second_angle, 1.0f);
+                    const glm::vec3 inner_second = point(second_angle, inner_radius);
                     for (const glm::vec3& vertex : {
                              outer_first, inner_first, outer_second,
-                             outer_second, inner_first, inner_second}) {
-                        ring.push_back({vertex, normal, color, {}, {}});
+                             outer_second, inner_first, inner_second,
+                             outer_second, inner_first, outer_first,
+                             inner_second, inner_first, outer_second}) {
+                        ring.push_back({vertex, normal, colors[axis], {}, {}});
                     }
                 }
                 impl_->gizmo.update(ring);
                 set_matrices(from_glm(origin));
+                impl_->program.set_vec3("u_tint", colors[axis]);
                 impl_->gizmo.draw();
             }
-            glEnable(GL_CULL_FACE);
         } else {
             for (int axis = 0; axis < 3; ++axis) {
                 glm::mat4 model = origin;
+                model = glm::translate(model, axes[axis] * (shaft_length * 0.5f));
                 if (gizmo_mode == GizmoMode::translate) {
-                    model = glm::translate(model, axes[axis] * (shaft_length * 0.5f));
                     model = glm::rotate(model,
                         axis == 0 ? -1.57079633f : axis == 2 ? 1.57079633f : 0.0f,
                         axis == 0 ? glm::vec3{0.0f, 0.0f, 1.0f} :
@@ -793,7 +928,6 @@ void Renderer::render(
                     model = glm::scale(model,
                         {shaft_radius, shaft_length, shaft_radius});
                 } else {
-                    model = glm::translate(model, axes[axis] * (shaft_length * 0.5f));
                     model = glm::rotate(model, rotation_axes[axis].x,
                         {1.0f, 0.0f, 0.0f});
                     model = glm::rotate(model, rotation_axes[axis].z,
@@ -825,6 +959,16 @@ void Renderer::render(
     impl_->program.set_vec3("u_tint", impl_->character_material.tint);
     impl_->program.set_int("u_is_ground", 0);
     impl_->character.draw();
+
+    for (const Impl::EnemyDraw& enemy : impl_->enemies) {
+        if (enemy.matrices.empty()) {
+            continue;
+        }
+        upload_skinning_matrices(enemy.matrices);
+        set_matrices(character_matrix(enemy.placement));
+        impl_->program.set_vec3("u_tint", enemy.tint);
+        impl_->character.draw();
+    }
 }
 
 }

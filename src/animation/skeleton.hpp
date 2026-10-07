@@ -105,6 +105,11 @@ public:
     [[nodiscard]] std::size_t active_clip() const;
     [[nodiscard]] std::size_t clip_count() const;
     [[nodiscard]] std::optional<std::size_t> find_clip(std::string_view name) const;
+    [[nodiscard]] const AnimationClip& clip(std::size_t clip_index) const;
+    // Layer-mixing building blocks: sample a clip over the bind pose and rebuild matrices.
+    void sample_clip_pose(std::size_t clip_index, float time_seconds,
+        std::vector<BoneTransform>& transforms) const;
+    void resolve_pose(Pose& pose) const;
 
 private:
     void rebuild_pose();

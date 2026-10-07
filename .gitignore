@@ -38,3 +38,6 @@ Desktop.ini
 
 # Local CMake configuration
 /CMakeUserPresets.json
+
+# ImGui local layout
+imgui.ini

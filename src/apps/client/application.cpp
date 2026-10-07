@@ -3,9 +3,14 @@
 #include "assets/gltf_model_loader.hpp"
 #include "character/character.hpp"
 #include "character/character_controller.hpp"
+#include "character/combat.hpp"
 #include "editor/editor_camera.hpp"
+#include "editor/asset_database.hpp"
+#include "editor/editor_ui.hpp"
 #include "editor/selection.hpp"
 #include "editor/world_editor.hpp"
+#include "apps/client/target_frame.hpp"
+#include "game/combat/combat.hpp"
 #include "game/world/collision_world.hpp"
 #include "game/world/terrain.hpp"
 #include "platform/input_settings.hpp"
@@ -162,9 +167,42 @@ std::vector<editor::SelectableObject> make_demo_selectables(
         objects.push_back({
             static_cast<editor::SelectionId>(index + 1),
             {box.minimum, box.maximum},
+            {},
+            {},
+            glm::vec3{1.0f},
+            "Wall " + std::to_string(index + 1),
         });
     }
     return objects;
+}
+
+constexpr float kCorpseSeconds = 5.0f;
+constexpr float kRespawnSeconds = 3.0f;
+
+struct EnemyActor {
+    game::combat::EntityId id = game::combat::kInvalidEntity;
+    std::unique_ptr<character::Character> character;
+    glm::vec3 home{0.0f};
+    std::string name;
+    int level = 1;
+    float yaw = 0.0f;
+    float timer = 0.0f;
+};
+
+// Creates a fresh gameplay entity for the actor and resets its presentation.
+void spawn_enemy(EnemyActor& actor, game::combat::EntityRegistry& registry)
+{
+    game::combat::CombatEntity entity;
+    entity.name = actor.name;
+    entity.level = actor.level;
+    entity.faction = game::combat::Faction::Hostile;
+    entity.position = actor.home;
+    entity.max_hp = 100.0f;
+    entity.hp = 100.0f;
+    actor.id = registry.create(entity);
+    actor.timer = 0.0f;
+    actor.character->transform().position = {actor.home.x, actor.home.y, actor.home.z};
+    (void)actor.character->model().animation().set_state(animation::AnimationState::Idle, 0.0f);
 }
 
 }
@@ -175,6 +213,7 @@ int run_application()
         platform::GlfwRuntime glfw;
         platform::Window window(1280, 720, "MMO Engine - Movement Prototype");
         renderer::Renderer renderer;
+        editor::EditorUI editor_ui(window.native_handle());
         scene::CameraController camera;
         editor::WorldEditor world_editor;
         editor::EditorCamera editor_camera;
@@ -190,6 +229,10 @@ int run_application()
 
         assets::GltfModelLoader model_loader;
         assets::AssetSystem assets(model_loader);
+        editor::AssetDatabase asset_database(std::filesystem::current_path());
+        asset_database.refresh();
+        std::cout << "[assets] indexed " << asset_database.entries().size()
+            << " models and prefabs.\n";
         assets::Model loaded_model = assets.load_model(
             "Universal Animation Library[Standard]/Unreal-Godot/UAL1_Standard.glb");
         const std::size_t backward_walk_index = add_backward_walk_clip(loaded_model);
@@ -201,6 +244,84 @@ int run_application()
             throw std::runtime_error("Could not bind the backward-walking animation");
         }
         character::CharacterController controller(player);
+        // Gameplay entities. Animation never owns damage or targets: it only emits events.
+        game::combat::EntityRegistry combat_registry;
+        game::combat::DamageSystem damage_system;
+        game::combat::TargetSystem targets;
+        game::combat::CombatSystem combat_system(
+            game::combat::CombatSettings{}, targets, damage_system);
+        game::combat::EntityId player_entity_id = game::combat::kInvalidEntity;
+        {
+            game::combat::CombatEntity player_entity;
+            player_entity.name = "Player";
+            player_entity.faction = game::combat::Faction::Player;
+            player_entity.max_hp = 100.0f;
+            player_entity.hp = 100.0f;
+            player_entity_id = combat_registry.create(player_entity);
+        }
+        std::vector<EnemyActor> enemies;
+        {
+            const animation::Vector3& start = player.transform().position;
+            const glm::vec3 homes[] = {
+                {start[0], start[1], start[2] + 3.0f},
+                {start[0] - 6.0f, start[1], start[2] + 9.0f},
+                {start[0] + 7.0f, start[1], start[2] + 14.0f},
+            };
+            const char* const names[] = {"Orc", "Goblin", "Ogre"};
+            for (int index = 0; index < 3; ++index) {
+                EnemyActor actor;
+                actor.character = std::make_unique<character::Character>(body_model);
+                bind_animations(*actor.character);
+                actor.home = homes[index];
+                actor.name = names[index];
+                actor.level = 3 + index * 2;
+                spawn_enemy(actor, combat_registry);
+                enemies.push_back(std::move(actor));
+            }
+        }
+        const auto find_actor = [&enemies](game::combat::EntityId id) -> EnemyActor* {
+            for (EnemyActor& actor : enemies) {
+                if (actor.id == id) {
+                    return &actor;
+                }
+            }
+            return nullptr;
+        };
+        // Reactions to damage live outside the combat rules: they only drive presentation.
+        damage_system.add_listener([&](const game::combat::DamageEvent& event) {
+            std::cout << "[combat] damage " << event.amount << " to entity " << event.target
+                << (event.killed ? " (killed)" : "") << '\n';
+            if (EnemyActor* actor = find_actor(event.target)) {
+                auto& animation_controller = actor->character->model().animation();
+                if (event.killed) {
+                    (void)animation_controller.play_animation("Death01", false);
+                } else {
+                    (void)animation_controller.play_animation("Hit_Chest", false);
+                }
+            }
+        });
+        character::CombatSystem combat_system_stats;
+        character::CombatController combat(player, character::default_combat_actions());
+        game::combat::CombatContext combat_context;
+        combat.set_event_handler([&](const character::CombatEvent& event) {
+            combat_system_stats.handle(event);
+            if (event.type == character::CombatEventType::AttackHit) {
+                (void)combat_system.on_attack_hit(combat_registry, combat_context);
+            } else if (event.type == character::CombatEventType::AttackEnd) {
+                combat_system.on_swing_end();
+            }
+        });
+        bool previous_target_click = false;
+        bool previous_right_down = false;
+        double right_drag_distance = 0.0;
+        float right_hold_time = 0.0f;
+        double right_click_x = 0.0;
+        double right_click_y = 0.0;
+        bool previous_tab = false;
+        bool previous_auto_attack_key = false;
+        bool previous_debug_toggle = false;
+        bool animation_debug = false;
+        double next_debug_log = 0.0;
         renderer.set_character_model(player.model().body().model());
         renderer.set_skinning_matrices(player.model().animation().pose().skin_matrices);
         renderer.set_terrain(terrain);
@@ -213,11 +334,13 @@ int run_application()
 
         const auto& clips = body_model->animations;
         std::cout << "[app] Movement prototype running. WASD moves relative to the camera; "
-            << "hold Shift to run; Space jumps; hold right mouse to orbit; "
+            << "hold Shift to run; Space jumps; hold right mouse to orbit; left click selects a target, Tab/Shift+Tab cycles targets, 1 toggles auto attack (works while moving); F3 prints animation layer debug; "
             << "scroll zooms; [ and ] preview every animation; F1 toggles World Editor; "
             << "Escape exits.\n"
             << "[editor] F1 toggles editor; RMB + mouse looks; WASD moves; Q/E descend/ascend; "
-            << "Shift speeds up; Ctrl slows down; wheel adjusts speed.\n"
+            << "Shift speeds up; Ctrl slows down; wheel adjusts speed; M/R/T select move/rotate/scale, "
+            << "select an object and drag LMB to transform; X/Y/Z/U select axes, "
+            << "G toggles snap and C toggles world/local space.\n"
             << "[terrain] in World Editor, F2 toggles terrain tools; 1 raise, 2 lower, "
             << "3 flatten; left mouse sculpts; wheel changes brush size; "
             << "Ctrl+S saves; Ctrl+L loads.\n"
@@ -252,6 +375,7 @@ int run_application()
 
         while (!window.should_close()) {
             window.poll_events();
+            editor_ui.begin_frame();
             if (window.escape_pressed()) {
                 window.request_close();
             }
@@ -267,7 +391,8 @@ int run_application()
             }
 
             const bool terrain_tool_toggle =
-                world_editor.is_active() && window.key_pressed(platform::Key::F2);
+                world_editor.is_active() && !editor_ui.wants_keyboard_capture() &&
+                window.key_pressed(platform::Key::F2);
             if (terrain_tool_toggle && !previous_terrain_tool_toggle) {
                 terrain_editor_active = !terrain_editor_active;
                 std::cout << "[terrain] tools "
@@ -280,6 +405,7 @@ int run_application()
 
             const bool save_pressed =
                 world_editor.is_active() &&
+                !editor_ui.wants_keyboard_capture() &&
                 window.key_pressed(platform::Key::LeftControl) &&
                 window.key_pressed(platform::Key::S);
             if (save_pressed && !previous_save) {
@@ -290,6 +416,7 @@ int run_application()
 
             const bool load_pressed =
                 world_editor.is_active() &&
+                !editor_ui.wants_keyboard_capture() &&
                 window.key_pressed(platform::Key::LeftControl) &&
                 window.key_pressed(platform::Key::L);
             if (load_pressed && !previous_load) {
@@ -306,7 +433,8 @@ int run_application()
 
             const bool game_mode = world_editor.mode() == editor::EngineMode::game;
             const bool right_dragging =
-                window.right_mouse_pressed() && (game_mode || world_editor.is_active());
+                window.right_mouse_pressed() && (game_mode || world_editor.is_active()) &&
+                !editor_ui.wants_mouse_capture();
             window.set_cursor_captured(right_dragging);
             double mouse_delta_x = 0.0;
             double mouse_delta_y = 0.0;
@@ -319,11 +447,14 @@ int run_application()
             }
             if (terrain_editor_active) {
                 const game::world::TerrainBrush previous_selection = selected_brush;
-                if (window.key_pressed(platform::Key::Digit1)) {
+                if (!editor_ui.wants_keyboard_capture() &&
+                    window.key_pressed(platform::Key::Digit1)) {
                     selected_brush = game::world::TerrainBrush::raise;
-                } else if (window.key_pressed(platform::Key::Digit2)) {
+                } else if (!editor_ui.wants_keyboard_capture() &&
+                    window.key_pressed(platform::Key::Digit2)) {
                     selected_brush = game::world::TerrainBrush::lower;
-                } else if (window.key_pressed(platform::Key::Digit3)) {
+                } else if (!editor_ui.wants_keyboard_capture() &&
+                    window.key_pressed(platform::Key::Digit3)) {
                     selected_brush = game::world::TerrainBrush::flatten;
                 }
                 if (selected_brush != previous_selection) {
@@ -340,12 +471,13 @@ int run_application()
                 static_cast<float>(current_time - previous_time), 0.0f, 0.1f);
             previous_time = current_time;
 
-            if (!game_mode && !terrain_editor_active && !right_dragging) {
-                if (window.key_pressed(platform::Key::W)) {
+            if (world_editor.is_active() && !terrain_editor_active && !right_dragging &&
+                !editor_ui.wants_keyboard_capture()) {
+                if (window.key_pressed(platform::Key::M)) {
                     selection.set_transform_mode(editor::TransformMode::translate);
-                } else if (window.key_pressed(platform::Key::E)) {
-                    selection.set_transform_mode(editor::TransformMode::rotate);
                 } else if (window.key_pressed(platform::Key::R)) {
+                    selection.set_transform_mode(editor::TransformMode::rotate);
+                } else if (window.key_pressed(platform::Key::T)) {
                     selection.set_transform_mode(editor::TransformMode::scale);
                 }
                 const bool axis_x = window.key_pressed(platform::Key::X);
@@ -384,6 +516,13 @@ int run_application()
                                 ? "world" : "local") << '\n';
                 }
                 previous_space_toggle = space_toggle;
+            } else {
+                previous_snap_toggle = false;
+                previous_space_toggle = false;
+                previous_transform_x = false;
+                previous_transform_y = false;
+                previous_transform_z = false;
+                previous_transform_uniform = false;
             }
 
             character::CharacterControllerInput input;
@@ -421,9 +560,178 @@ int run_application()
             previous_clip_forward = clip_forward;
 
             if (game_mode) {
+                const animation::Vector3& player_position = player.transform().position;
+                game::combat::CombatEntity& player_entity = *combat_registry.find(player_entity_id);
+                player_entity.position = {player_position[0], player_position[1], player_position[2]};
+                const glm::vec3 camera_forward{
+                    last_game_camera_pose.focus_x - last_game_camera_pose.eye_x,
+                    0.0f,
+                    last_game_camera_pose.focus_z - last_game_camera_pose.eye_z};
+                const float camera_yaw_forward = std::atan2(camera_forward.x, camera_forward.z);
+
+                // Target selection: click picks an entity, clicking empty space clears.
+                const bool target_click = window.left_mouse_pressed() &&
+                    !window.right_mouse_pressed() && !editor_ui.wants_mouse_capture();
+                if (target_click && !previous_target_click) {
+                    double cursor_x = 0.0;
+                    double cursor_y = 0.0;
+                    int window_width = 0;
+                    int window_height = 0;
+                    window.cursor_position(cursor_x, cursor_y);
+                    window.window_size(window_width, window_height);
+                    const glm::vec3 direction = cursor_ray(
+                        last_game_camera_pose, cursor_x, cursor_y, window_width, window_height);
+                    const game::combat::EntityId picked = game::combat::pick_entity(combat_registry,
+                        {last_game_camera_pose.eye_x, last_game_camera_pose.eye_y,
+                            last_game_camera_pose.eye_z},
+                        direction, 80.0f);
+                    if (picked != game::combat::kInvalidEntity) {
+                        targets.select(combat_registry, player_entity, picked);
+                    } else {
+                        targets.clear();
+                    }
+                }
+                previous_target_click = target_click;
+
+                // A short right click (not an orbit drag) engages or leaves combat.
+                const bool right_down = window.right_mouse_pressed() &&
+                    !editor_ui.wants_mouse_capture();
+                if (right_down) {
+                    right_drag_distance += std::abs(mouse_delta_x) + std::abs(mouse_delta_y);
+                    right_hold_time += delta_seconds;
+                } else if (previous_right_down) {
+                    if (right_drag_distance < 6.0 && right_hold_time < 0.35f) {
+                        int window_width = 0;
+                        int window_height = 0;
+                        window.window_size(window_width, window_height);
+                        const glm::vec3 direction = cursor_ray(last_game_camera_pose,
+                            right_click_x, right_click_y, window_width, window_height);
+                        const game::combat::EntityId picked = game::combat::pick_entity(
+                            combat_registry,
+                            {last_game_camera_pose.eye_x, last_game_camera_pose.eye_y,
+                                last_game_camera_pose.eye_z},
+                            direction, 80.0f);
+                        if (picked != game::combat::kInvalidEntity) {
+                            targets.select(combat_registry, player_entity, picked);
+                            const game::combat::CombatEntity* picked_entity =
+                                combat_registry.find(picked);
+                            if (picked_entity != nullptr && picked_entity->alive() &&
+                                picked_entity->faction == game::combat::Faction::Hostile) {
+                                combat_system.set_auto_attack(true);
+                                std::cout << "[combat] engaged " << picked_entity->name << '\n';
+                            }
+                        } else {
+                            combat_system.set_auto_attack(false);
+                            std::cout << "[combat] left combat\n";
+                        }
+                    }
+                }
+                if (!right_down) {
+                    right_drag_distance = 0.0;
+                    right_hold_time = 0.0f;
+                    if (!previous_right_down) {
+                        window.cursor_position(right_click_x, right_click_y);
+                    }
+                }
+                previous_right_down = right_down;
+
+                const bool tab_pressed = !editor_ui.wants_keyboard_capture() &&
+                    window.key_pressed(platform::Key::Tab);
+                if (tab_pressed && !previous_tab) {
+                    targets.cycle(combat_registry, player_entity, camera_yaw_forward,
+                        window.key_pressed(platform::Key::LeftShift));
+                }
+                previous_tab = tab_pressed;
+                const bool auto_attack_key = !editor_ui.wants_keyboard_capture() &&
+                    window.key_pressed(platform::Key::Digit1);
+                if (auto_attack_key && !previous_auto_attack_key) {
+                    combat_system.toggle_auto_attack();
+                    std::cout << "[combat] auto attack "
+                        << (combat_system.auto_attack_enabled() ? "on" : "off") << '\n';
+                }
+                previous_auto_attack_key = auto_attack_key;
+
+                // Combat only reads a snapshot of the player; it never touches movement input.
+                targets.update(combat_registry);
+                combat_context = {
+                    player_entity_id, player_entity.position, controller.yaw(), true};
+                combat_system.update(delta_seconds, combat_registry, combat_context,
+                    &collision_world, [&combat] {
+                        return combat.request(character::CombatState::Attack);
+                    });
+                controller.set_facing_target(
+                    combat_system.desired_facing(combat_registry, combat_context));
+                controller.set_facing_rotation_speed(combat_system.settings().rotation_speed);
                 controller.update(
                     delta_seconds, input, camera.yaw(), collision_world, &terrain);
+                combat.update();
                 selection.clear();
+            }
+            std::vector<renderer::EnemyRenderInstance> render_enemies;
+            for (EnemyActor& actor : enemies) {
+                if (actor.id == game::combat::kInvalidEntity) {
+                    actor.timer -= delta_seconds;
+                    if (actor.timer <= 0.0f) {
+                        spawn_enemy(actor, combat_registry);
+                    }
+                    continue;
+                }
+                game::combat::CombatEntity* entity = combat_registry.find(actor.id);
+                animation::Vector3& e = actor.character->transform().position;
+                e[1] = terrain.height_at({e[0], e[2]});
+                entity->position = {e[0], e[1], e[2]};
+                const animation::Vector3& p = player.transform().position;
+                if (entity->alive()) {
+                    actor.yaw = std::atan2(p[0] - e[0], p[2] - e[2]);
+                }
+                actor.character->transform().rotation = {
+                    0.0f, std::sin(actor.yaw * 0.5f), 0.0f, std::cos(actor.yaw * 0.5f)};
+                actor.character->model().update(delta_seconds);
+                auto& enemy_animation = actor.character->model().animation();
+                if (entity->alive()) {
+                    if (!enemy_animation.animator().playing()) {
+                        (void)enemy_animation.set_state(animation::AnimationState::Idle, 0.15f);
+                    }
+                } else {
+                    // The corpse stays selectable for a while, then the entity is removed.
+                    actor.timer += delta_seconds;
+                    if (actor.timer >= kCorpseSeconds) {
+                        combat_registry.remove(actor.id);
+                        actor.id = game::combat::kInvalidEntity;
+                        actor.timer = kRespawnSeconds;
+                        continue;
+                    }
+                }
+                render_enemies.push_back({{e[0], e[1], e[2], actor.yaw},
+                    entity->alive() ? glm::vec3{1.0f, 0.5f, 0.5f} : glm::vec3{0.55f},
+                    enemy_animation.pose().skin_matrices});
+            }
+            renderer.set_enemies(render_enemies);
+            if (game_mode) {
+                targets.update(combat_registry);
+            }
+            const bool debug_toggle = window.key_pressed(platform::Key::F3);
+            if (debug_toggle && !previous_debug_toggle) {
+                animation_debug = !animation_debug;
+                std::cout << "[debug] Animation Layers "
+                    << (animation_debug ? "on" : "off") << '\n';
+            }
+            previous_debug_toggle = debug_toggle;
+            if (animation_debug && window.time_seconds() >= next_debug_log) {
+                next_debug_log = window.time_seconds() + 0.25;
+                const animation::AnimationMixer& mixer = player.model().animation().mixer();
+                std::cout << "[anim] Movement: "
+                    << character::to_string(controller.movement_state())
+                    << " | Combat: " << game::combat::to_string(combat_system.state())
+                    << " | Target: " << game::combat::to_string(targets.state(combat_registry))
+                    << " | Anim: " << character::to_string(combat.state())
+                    << " | Lower: " << player.model().animation().lower_clip_name()
+                    << " w=" << mixer.lower_weight()
+                    << " | Upper: " << player.model().animation().upper_clip_name()
+                    << " w=" << mixer.upper_weight()
+                    << " | Attack " << combat.attack_time() << "/" << combat.attack_duration()
+                    << " | mask bones=" << mixer.mask().active_bone_count()
+                    << " | layers=" << mixer.active_layer_count() << '\n';
             }
             const animation::Vector3& position = player.transform().position;
             scene::CameraPose camera_pose;
@@ -437,16 +745,17 @@ int run_application()
                 camera_pose = last_game_camera_pose;
             } else {
                 editor::EditorCameraInput editor_input;
-                if (right_dragging) {
+                if (!editor_ui.wants_keyboard_capture() &&
+                    !editor_ui.wants_mouse_capture()) {
                     editor_input.forward =
-                        (window.key_pressed(platform::Key::W) ? 1.0f : 0.0f) -
-                        (window.key_pressed(platform::Key::S) ? 1.0f : 0.0f);
+                    (window.key_pressed(platform::Key::W) ? 1.0f : 0.0f) -
+                    (window.key_pressed(platform::Key::S) ? 1.0f : 0.0f);
                     editor_input.right =
-                        (window.key_pressed(platform::Key::D) ? 1.0f : 0.0f) -
-                        (window.key_pressed(platform::Key::A) ? 1.0f : 0.0f);
+                    (window.key_pressed(platform::Key::D) ? 1.0f : 0.0f) -
+                    (window.key_pressed(platform::Key::A) ? 1.0f : 0.0f);
                     editor_input.up =
-                        (window.key_pressed(platform::Key::E) ? 1.0f : 0.0f) -
-                        (window.key_pressed(platform::Key::Q) ? 1.0f : 0.0f);
+                    (window.key_pressed(platform::Key::E) ? 1.0f : 0.0f) -
+                    (window.key_pressed(platform::Key::Q) ? 1.0f : 0.0f);
                 }
                 editor_input.mouse_delta_x = mouse_delta_x;
                 editor_input.mouse_delta_y = mouse_delta_y;
@@ -457,10 +766,11 @@ int run_application()
                 editor_camera.update(delta_seconds, editor_input);
                 camera_pose = editor_camera.pose();
             }
-            const bool left_brush = terrain_editor_active && window.left_mouse_pressed();
+            const bool left_brush = terrain_editor_active &&
+                window.left_mouse_pressed() && !editor_ui.wants_mouse_capture();
             const bool selection_click =
                 world_editor.is_active() && !terrain_editor_active &&
-                window.left_mouse_pressed();
+                window.left_mouse_pressed() && !editor_ui.wants_mouse_capture();
             if (selection_click && !previous_selection_click) {
                 double cursor_x = 0.0;
                 double cursor_y = 0.0;
@@ -499,24 +809,44 @@ int run_application()
                 glm::vec3 scale_delta{0.0f};
                 const float horizontal_delta = static_cast<float>(mouse_delta_x);
                 const float vertical_delta = static_cast<float>(mouse_delta_y);
+                const glm::vec3 camera_forward = glm::normalize(
+                    glm::vec3{camera_pose.focus_x - camera_pose.eye_x,
+                        camera_pose.focus_y - camera_pose.eye_y,
+                        camera_pose.focus_z - camera_pose.eye_z});
+                const glm::vec3 camera_right = glm::normalize(
+                    glm::cross(camera_forward, glm::vec3{0.0f, 1.0f, 0.0f}));
+                const glm::vec3 camera_up = glm::normalize(
+                    glm::cross(camera_right, camera_forward));
                 if (selection.transform_mode() == editor::TransformMode::translate) {
-                    translation = {
-                        horizontal_delta * 0.02f,
-                        -vertical_delta * 0.02f,
-                        vertical_delta * 0.02f,
-                    };
+                    translation = (camera_right * horizontal_delta -
+                        camera_up * vertical_delta) * 0.02f;
                 } else if (selection.transform_mode() == editor::TransformMode::rotate) {
                     const float degrees = horizontal_delta * 0.5f;
                     rotation = {degrees, degrees, degrees};
                 } else {
-                    const float amount = horizontal_delta * 0.01f;
-                    scale_delta = {amount, -vertical_delta * 0.01f,
-                        vertical_delta * 0.01f};
+                    const glm::vec3 axis = selection.transform_axis_direction();
+                    const float axis_screen_x = glm::dot(axis, camera_right);
+                    const float axis_screen_y = glm::dot(axis, camera_up);
+                    const float projected_length_squared =
+                        axis_screen_x * axis_screen_x + axis_screen_y * axis_screen_y;
+                    const float projected_delta = projected_length_squared > 0.0001f
+                        ? (horizontal_delta * axis_screen_x -
+                            vertical_delta * axis_screen_y) / projected_length_squared
+                        : horizontal_delta;
+                    const float amount = projected_delta * 0.01f;
+                    if (selection.transform_axis() == editor::TransformAxis::uniform) {
+                        scale_delta = glm::vec3{amount};
+                    } else {
+                        scale_delta[static_cast<int>(selection.transform_axis())] = amount;
+                    }
                 }
                 selection.transform_selected(translation, rotation, scale_delta);
                 std::vector<game::world::CollisionBox> edited_boxes;
                 edited_boxes.reserve(selection.objects().size());
                 for (const editor::SelectableObject& object : selection.objects()) {
+                    if (!object.asset_path.empty()) {
+                        continue;
+                    }
                     const editor::SelectionBounds bounds =
                         *selection.bounds_for(object.id);
                     edited_boxes.push_back({bounds.minimum, bounds.maximum});
@@ -563,25 +893,119 @@ int run_application()
             previous_brush = left_brush && brush_cursor_valid;
             previous_flattening =
                 selected_brush == game::world::TerrainBrush::flatten;
+
+            const editor::EditorUIActions ui_actions =
+                editor_ui.draw(world_editor.is_active(), selection, asset_database);
+            if (ui_actions.world_changed) {
+                std::vector<game::world::CollisionBox> edited_boxes;
+                edited_boxes.reserve(selection.objects().size());
+                for (const editor::SelectableObject& object : selection.objects()) {
+                    if (!object.asset_path.empty()) {
+                        continue;
+                    }
+                    const editor::SelectionBounds bounds =
+                        *selection.bounds_for(object.id);
+                    edited_boxes.push_back({bounds.minimum, bounds.maximum});
+                }
+                collision_world = game::world::CollisionWorld(
+                    collision_world.bounds(), std::move(edited_boxes));
+            }
+            if (ui_actions.asset_drop) {
+                try {
+                    const std::filesystem::path model_path =
+                        asset_database.resolve_model_path(
+                            ui_actions.asset_drop->asset_path);
+                    const auto asset_entry = std::find_if(
+                        asset_database.entries().begin(),
+                        asset_database.entries().end(),
+                        [&ui_actions](const editor::AssetEntry& entry) {
+                            return entry.relative_path ==
+                                ui_actions.asset_drop->asset_path;
+                        });
+                    if (asset_entry == asset_database.entries().end()) {
+                        throw std::runtime_error(
+                            "dropped asset disappeared from the asset database");
+                    }
+                    assets::Model model = assets.load_model(model_path);
+                    int window_width = 0;
+                    int window_height = 0;
+                    window.window_size(window_width, window_height);
+                    const glm::vec2 cursor = ui_actions.asset_drop->cursor_position;
+                    const glm::vec3 direction = cursor_ray(
+                        camera_pose, cursor.x, cursor.y, window_width, window_height);
+                    glm::vec3 hit;
+                    if (!terrain.intersect_ray(
+                            {camera_pose.eye_x, camera_pose.eye_y, camera_pose.eye_z},
+                            direction, 500.0f, hit)) {
+                        throw std::runtime_error(
+                            "could not place asset: the viewport ray did not hit the terrain");
+                    }
+                    const std::string model_key =
+                        asset_entry->model_path.generic_string();
+                    const renderer::ModelBounds bounds =
+                        renderer.register_editor_model(model_key, model);
+                    const glm::vec3 center{
+                        hit.x,
+                        hit.y + (bounds.maximum.y - bounds.minimum.y) * 0.5f,
+                        hit.z,
+                    };
+                    const std::string object_name =
+                        ui_actions.asset_drop->asset_path.stem().string();
+                    (void)selection.add_object({
+                        0,
+                        {bounds.minimum, bounds.maximum},
+                        center,
+                        {},
+                        glm::vec3{1.0f},
+                        object_name.empty() ? "Asset" : object_name,
+                        model_key,
+                    });
+                    editor_ui.set_status(
+                        "Added " + ui_actions.asset_drop->asset_path.generic_string(),
+                        false);
+                } catch (const std::exception& error) {
+                    const std::string message =
+                        "Could not add asset: " + std::string(error.what());
+                    std::cerr << "[assets] " << message << '\n';
+                    editor_ui.set_status(message, true);
+                }
+            }
+
             renderer.set_skinning_matrices(
                 player.model().animation().pose().skin_matrices);
 
+            {
+                const game::combat::CombatEntity* target = combat_registry.find(targets.current());
+                if (game_mode && target != nullptr) {
+                    renderer.set_target_indicator(true, target->position, 0.9f,
+                        target->alive() ? glm::vec3{1.0f, 0.2f, 0.15f} : glm::vec3{0.5f});
+                    std::string status = std::string("Auto Attack: ") +
+                        (combat_system.auto_attack_enabled() ? "ON" : "OFF (press 1)");
+                    if (combat_system.auto_attack_enabled() &&
+                        combat_system.last_block() != game::combat::AttackBlock::None) {
+                        status += std::string(" - ") + game::combat::to_string(combat_system.last_block());
+                    }
+                    ui::draw_target_frame({target->name, target->level, target->hp, target->max_hp,
+                        status, !target->alive()});
+                } else {
+                    renderer.set_target_indicator(false, {}, 1.0f, {});
+                }
+            }
             int framebuffer_width = 0;
             int framebuffer_height = 0;
             window.framebuffer_size(framebuffer_width, framebuffer_height);
             const bool editor_mode = world_editor.is_active();
             std::vector<renderer::RenderBox> render_boxes;
-            if (editor_mode) {
-                render_boxes.reserve(selection.objects().size());
-                for (const editor::SelectableObject& object : selection.objects()) {
-                    render_boxes.push_back({
-                        object.id,
-                        object.position,
-                        (object.local_bounds.maximum - object.local_bounds.minimum) * 0.5f,
-                        object.rotation_degrees,
-                        object.scale,
-                    });
-                }
+            render_boxes.reserve(selection.objects().size());
+            for (const editor::SelectableObject& object : selection.objects()) {
+                render_boxes.push_back({
+                    object.id,
+                    object.position,
+                    (object.local_bounds.maximum - object.local_bounds.minimum) * 0.5f,
+                    object.rotation_degrees,
+                    object.scale,
+                    object.asset_path,
+                });
             }
             renderer::GizmoMode gizmo_mode = renderer::GizmoMode::translate;
             if (selection.transform_mode() == editor::TransformMode::rotate) {
@@ -602,7 +1026,9 @@ int run_application()
                 selected_bounds
                     ? (selected_bounds->minimum + selected_bounds->maximum) * 0.5f
                     : glm::vec3{0.0f},
-                gizmo_mode);
+                gizmo_mode,
+                selection.transform_space() == editor::TransformSpace::local);
+            editor_ui.render();
             window.swap_buffers();
         }
 

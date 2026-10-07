@@ -25,16 +25,24 @@ int glfw_key(Key key)
     case Key::Q: return GLFW_KEY_Q;
     case Key::Space: return GLFW_KEY_SPACE;
     case Key::F: return GLFW_KEY_F;
-    case Key::G: return GLFW_KEY_G;
     case Key::LeftShift: return GLFW_KEY_LEFT_SHIFT;
     case Key::LeftBracket: return GLFW_KEY_LEFT_BRACKET;
     case Key::RightBracket: return GLFW_KEY_RIGHT_BRACKET;
     case Key::E: return GLFW_KEY_E;
     case Key::F1: return GLFW_KEY_F1;
     case Key::F2: return GLFW_KEY_F2;
-    case Key::C: return GLFW_KEY_C;
+    case Key::F3: return GLFW_KEY_F3;
+    case Key::Tab: return GLFW_KEY_TAB;
     case Key::L: return GLFW_KEY_L;
     case Key::LeftControl: return GLFW_KEY_LEFT_CONTROL;
+    case Key::G: return GLFW_KEY_G;
+    case Key::C: return GLFW_KEY_C;
+    case Key::M: return GLFW_KEY_M;
+    case Key::R: return GLFW_KEY_R;
+    case Key::U: return GLFW_KEY_U;
+    case Key::X: return GLFW_KEY_X;
+    case Key::Y: return GLFW_KEY_Y;
+    case Key::Z: return GLFW_KEY_Z;
     case Key::Digit0: return GLFW_KEY_0;
     case Key::Digit1: return GLFW_KEY_1;
     case Key::Digit2: return GLFW_KEY_2;
@@ -45,11 +53,6 @@ int glfw_key(Key key)
     case Key::Digit7: return GLFW_KEY_7;
     case Key::Digit8: return GLFW_KEY_8;
     case Key::Digit9: return GLFW_KEY_9;
-    case Key::X: return GLFW_KEY_X;
-    case Key::Y: return GLFW_KEY_Y;
-    case Key::Z: return GLFW_KEY_Z;
-    case Key::R: return GLFW_KEY_R;
-    case Key::U: return GLFW_KEY_U;
     case Key::T: return GLFW_KEY_T;
     }
     return GLFW_KEY_UNKNOWN;
@@ -223,6 +226,11 @@ void Window::framebuffer_size(int& width, int& height) const
 void Window::swap_buffers() const
 {
     glfwSwapBuffers(handle_);
+}
+
+::GLFWwindow* Window::native_handle() const
+{
+    return handle_;
 }
 
 GraphicsProcAddress Window::get_proc_address(const char* name)

@@ -66,6 +66,53 @@ bool AnimationController::set_state(AnimationState state, float fade_seconds)
 void AnimationController::update(float delta_seconds)
 {
     animator_.update(delta_seconds);
+    mixer_.update(delta_seconds, events_);
+    if (mixer_.active()) {
+        mixer_.mix(animator_, animator_.pose(), mixed_pose_);
+    }
+}
+
+void AnimationController::set_upper_body_mask(BoneMask mask)
+{
+    mixer_ = AnimationMixer(std::move(mask));
+}
+
+bool AnimationController::play_action(std::string_view name, const ActionSettings& settings)
+{
+    const std::optional<std::size_t> clip = animator_.find_clip(name);
+    if (!clip || mixer_.mask().size() == 0) {
+        return false;
+    }
+    return mixer_.start_action(*clip, animator_.clip(*clip).duration, settings);
+}
+
+void AnimationController::cancel_action()
+{
+    mixer_.cancel_action();
+}
+
+std::vector<AnimationEvent> AnimationController::take_events()
+{
+    return std::exchange(events_, {});
+}
+
+const AnimationMixer& AnimationController::mixer() const
+{
+    return mixer_;
+}
+
+std::string_view AnimationController::lower_clip_name() const
+{
+    return animator_.playing() && animator_.active_clip() < animator_.clip_count()
+        ? std::string_view(animator_.clip(animator_.active_clip()).name)
+        : std::string_view("<none>");
+}
+
+std::string_view AnimationController::upper_clip_name() const
+{
+    return mixer_.active() && mixer_.action_clip() < animator_.clip_count()
+        ? std::string_view(animator_.clip(mixer_.action_clip()).name)
+        : std::string_view("<none>");
 }
 
 void AnimationController::stop()
@@ -81,7 +128,8 @@ AnimationState AnimationController::state() const
 
 const Pose& AnimationController::pose() const
 {
-    return animator_.pose();
+    return mixer_.active() && !mixed_pose_.skin_matrices.empty()
+        ? mixed_pose_ : animator_.pose();
 }
 
 const Animator& AnimationController::animator() const

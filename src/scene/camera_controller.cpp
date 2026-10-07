@@ -77,7 +77,7 @@ float CameraController::apply_input(const CameraInput& input)
             settings_.horizontal_sensitivity;
         yaw_ = wrap_angle(yaw_ + yaw_delta);
 
-        const float vertical_direction = settings_.invert_vertical ? 1.0f : -1.0f;
+        const float vertical_direction = settings_.invert_vertical ? -1.0f : 1.0f;
         pitch_ = std::clamp(
             pitch_ + static_cast<float>(input.mouse_delta_y) *
                 settings_.vertical_sensitivity * vertical_direction,

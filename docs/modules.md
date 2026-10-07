@@ -9,11 +9,11 @@ src/
   apps/client/        ponto de entrada e composição do cliente
   platform/           Window, contexto e eventos GLFW
   math/               convenções e transformações sobre GLM
-  assets/             MeshData, MeshCatalog, Model, AssetSystem e contrato ModelLoader
+  assets/             MeshData, MeshCatalog, Model, AssetSystem, loaders e geometria estática
   scene/              Camera, CameraController, Material e DrawItem
   renderer/           Renderer, Shader e Mesh (recursos GPU)
     opengl/           implementação do shader e buffers OpenGL
-  editor/             WorldEditor, EngineMode e câmera fly (CPU)
+  editor/             WorldEditor, câmera fly, seleção/transform, AssetDatabase e painéis ImGui
   animation/          skeleton, clips, poses e crossfade (main)
   character/          corpo/modelo, aparência e atributos (main)
   equipment/          slots e attachments CPU (main)
@@ -26,7 +26,9 @@ content/              convenções para arquivos de conteúdo futuros
 tests/                verificações CPU sem janela
 ```
 
-`assets/` contém o código que representa recursos, enquanto `content/` é o lugar dos arquivos artísticos. Ainda não existe importador de modelos ou texturas: as meshes atuais são procedurais.
+`src/assets/` contém o código que representa recursos, enquanto os arquivos artísticos podem estar em `assets/`, `content/` ou nos diretórios de origem já existentes. O loader GLB/glTF fornece dados CPU; o Asset Browser indexa esses modelos e os prefabs de `content/prefabs/`. O renderer de instâncias do editor suporta geometria estática e ainda não envia texturas para a GPU.
+
+O cliente inclui ImGui com os backends GLFW/OpenGL3 para os painéis de edição. `SelectionManager` mantém a hierarquia e os transforms dos objetos; a interface é somente uma visualização/controlador desses dados CPU.
 
 ## Fluxo de um frame
 

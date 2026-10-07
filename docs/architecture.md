@@ -56,6 +56,14 @@ Validar a direção com uma cena pequena: terreno, rochas, árvores, água e um 
 
 Não criar uma interface genérica para vários backends gráficos agora. `renderer` já é a fronteira; implementar um segundo backend só quando existir necessidade concreta e orçamento para manter ambos.
 
+## World Editor
+
+O `mmo_editor` mantém seleção e transformações no lado CPU, sem dependência de OpenGL. `SelectionManager` armazena os bounds locais e o transform de cada objeto selecionável, realiza raycasts em espaço local e fornece bounds mundiais. O cliente encaminha esses transforms ao `renderer` para desenhar os objetos e os gizmos; bounds mundiais também atualizam a colisão aproximada do mundo.
+
+M/R/T selecionam mover/rotacionar/escala, X/Y/Z/U selecionam eixo, G alterna snap e C alterna espaço World/Local. A UI de ImGui fica no cliente; SelectionManager também oferece as operações CPU de renomear, duplicar, apagar e editar transforms exibidas pelos painéis Hierarchy e Inspector.
+
+O `AssetDatabase` do editor indexa GLB/glTF nos diretórios de conteúdo configurados e manifests `.mmoprefab` versionados sob `content/prefabs/`. Um prefab referencia um modelo com caminho relativo ao projeto; o Asset Browser permite busca, criação e drag & drop para a viewport. O renderer converte nós de modelos estáticos em geometria centrada para desenhar e selecionar instâncias. Modelos com skin, materiais/texturas visuais, persistência de cenas e undo/redo continuam pendentes; falhas de carregamento ou posicionamento são mostradas no painel.
+
 ## Estrutura de pastas planejada
 
 ```text

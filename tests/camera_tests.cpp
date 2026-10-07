@@ -49,9 +49,16 @@ void test_pitch_zoom_and_follow()
     using namespace mmo::scene;
     CameraSettings settings;
     settings.distance_smoothing_seconds = 0.12f;
+    check(!settings.invert_vertical,
+        "third-person camera should use standard vertical mouse look by default");
     CameraController camera(settings);
     const CameraTarget target{{0.0f, 0.0f, 0.0f}, 0.0f};
     (void)camera.update(0.0f, target);
+    const float initial_pitch = camera.pitch();
+    camera.apply_input({0.0, -100.0, 0.0, true});
+    check(camera.pitch() < initial_pitch,
+        "moving the mouse upward should make the third-person camera look upward");
+    camera.apply_input({0.0, 100.0, 0.0, true});
     camera.apply_input({0.0, 100000.0, -100000.0, true});
     check(camera.pitch() >= settings.minimum_pitch &&
         camera.pitch() <= settings.maximum_pitch,

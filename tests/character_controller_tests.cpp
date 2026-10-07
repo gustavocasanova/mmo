@@ -1,6 +1,7 @@
 #include "assets/gltf_model_loader.hpp"
 #include "character/character.hpp"
 #include "character/character_controller.hpp"
+#include "character/combat.hpp"
 #include "game/world/collision_world.hpp"
 #include "game/world/terrain.hpp"
 
@@ -229,6 +230,65 @@ void test_controller_follows_sculpted_ground(
         "character did not land back on the sculpted terrain");
 }
 
+void test_walk_and_attack_are_layered(
+    const std::shared_ptr<const mmo::assets::Model>& model)
+{
+    using namespace mmo;
+    game::world::CollisionWorld collision_world;
+    auto player = make_player(model);
+    bind_movement_animations(player);
+    character::CharacterController controller(player);
+    character::CombatSystem combat_system;
+    character::CombatController combat(player, character::default_combat_actions());
+    combat.set_event_handler([&combat_system](const character::CombatEvent& event) {
+        combat_system.handle(event);
+    });
+
+    const character::CharacterControllerInput walk{1.0f, 0.0f, false, false};
+    for (int frame = 0; frame < 30; ++frame) {
+        controller.update(0.016f, walk, 0.0f, collision_world);
+    }
+    check(controller.movement_state() == character::MovementState::Walk, "expected Walk state");
+    const std::size_t walk_clip = player.model().animation().animator().active_clip();
+    const float start_z = player.transform().position[2];
+
+    check(combat.request(character::CombatState::Attack), "attack must start while walking");
+    bool upper_active_while_walking = false;
+    for (int frame = 0; frame < 30; ++frame) {
+        controller.update(0.016f, walk, 0.0f, collision_world);
+        combat.update();
+        upper_active_while_walking = upper_active_while_walking ||
+            player.model().animation().mixer().upper_weight() > 0.9f;
+        check(player.model().animation().animator().active_clip() == walk_clip,
+            "locomotion clip must not change when attacking");
+        check(controller.movement_state() == character::MovementState::Walk,
+            "movement state must not change when attacking");
+    }
+    check(upper_active_while_walking, "upper layer must reach full weight");
+    check(player.transform().position[2] < start_z - 0.1f, "character must keep moving");
+
+    // Change direction/speed mid-attack: the attack must not restart or cancel.
+    const character::CharacterControllerInput run{1.0f, 0.0f, true, false};
+    for (int frame = 0; frame < 60; ++frame) {
+        controller.update(0.016f, run, 0.0f, collision_world);
+        combat.update();
+    }
+    check(controller.movement_state() == character::MovementState::Run, "expected Run state");
+    check(combat_system.attacks_started() == 1 && combat_system.hits() == 1,
+        "attack must start and hit exactly once");
+    check(combat.state() != character::CombatState::None ||
+            combat_system.attacks_finished() == 1,
+        "combat state must be consistent");
+    for (int frame = 0; frame < 60; ++frame) {
+        controller.update(0.016f, {}, 0.0f, collision_world);
+        combat.update();
+    }
+    check(combat_system.attacks_finished() == 1 && combat.state() == character::CombatState::None,
+        "attack must end and return to None");
+    check(!player.model().animation().mixer().active(), "upper layer must blend out");
+    check(controller.movement_state() == character::MovementState::Idle, "expected Idle afterwards");
+}
+
 }
 
 int main()
@@ -242,6 +302,7 @@ int main()
         test_acceleration_jump_and_world_collision(model);
         test_speed_settings_and_animation_pack(model);
         test_controller_follows_sculpted_ground(model);
+        test_walk_and_attack_are_layered(model);
         std::cout << "CharacterControllerTest passed\n";
         return 0;
     } catch (const std::exception& error) {

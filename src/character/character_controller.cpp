@@ -17,6 +17,19 @@ float wrap_angle(float angle)
 
 }
 
+std::string_view to_string(MovementState state)
+{
+    switch (state) {
+    case MovementState::Idle: return "IDLE";
+    case MovementState::Walk: return "WALK";
+    case MovementState::Run: return "RUN";
+    case MovementState::StrafeLeft: return "STRAFE_LEFT";
+    case MovementState::StrafeRight: return "STRAFE_RIGHT";
+    case MovementState::Backward: return "BACKWARD";
+    }
+    return "UNKNOWN";
+}
+
 CharacterController::CharacterController(Character& character, MovementSettings settings)
     : character_(character), settings_(settings)
 {
@@ -149,7 +162,23 @@ void CharacterController::update(
         position.y = ground_height;
     }
 
-    if (settings_.rotate_character_to_movement && movement_length > kEpsilon) {
+    // While a facing target is set the character strafes/backpedals relative to it.
+    CharacterControllerInput animation_input = input;
+    if (facing_target_) {
+        const float facing = *facing_target_;
+        const math::Vec3 facing_forward{std::sin(facing), 0.0f, std::cos(facing)};
+        const math::Vec3 facing_right{-std::cos(facing), 0.0f, std::sin(facing)};
+        animation_input.forward = glm::dot(movement_direction, facing_forward) * movement_length;
+        animation_input.strafe = glm::dot(movement_direction, facing_right) * movement_length;
+        const float yaw_delta = wrap_angle(facing - yaw_);
+        if (facing_rotation_speed_ > 0.0f) {
+            const float step = facing_rotation_speed_ * elapsed;
+            yaw_ = wrap_angle(yaw_ + std::clamp(yaw_delta, -step, step));
+        } else {
+            const float turn = 1.0f - std::exp(-settings_.turn_speed * elapsed);
+            yaw_ = wrap_angle(yaw_ + yaw_delta * turn);
+        }
+    } else if (settings_.rotate_character_to_movement && movement_length > kEpsilon) {
         const float target_yaw = std::atan2(movement_direction.x, movement_direction.z);
         const float yaw_delta = wrap_angle(target_yaw - yaw_);
         const float turn = 1.0f - std::exp(-settings_.turn_speed * elapsed);
@@ -173,7 +202,21 @@ void CharacterController::update(
         state_ = CharacterMovementState::Idle;
     }
 
-    update_animation(input);
+    if (state_ == CharacterMovementState::Idle) {
+        movement_state_ = MovementState::Idle;
+    } else if (animation_input.run || state_ == CharacterMovementState::Running) {
+        movement_state_ = MovementState::Run;
+    } else if (std::abs(animation_input.forward) < kEpsilon && animation_input.strafe > kEpsilon) {
+        movement_state_ = MovementState::StrafeRight;
+    } else if (std::abs(animation_input.forward) < kEpsilon && animation_input.strafe < -kEpsilon) {
+        movement_state_ = MovementState::StrafeLeft;
+    } else if (animation_input.forward < -kEpsilon && std::abs(animation_input.strafe) < kEpsilon) {
+        movement_state_ = MovementState::Backward;
+    } else {
+        movement_state_ = MovementState::Walk;
+    }
+
+    update_animation(animation_input);
     character_.model().update(elapsed);
     if (animation_preview_active_ &&
         !character_.model().animation().animator().playing()) {
@@ -249,6 +292,21 @@ bool CharacterController::preview_animation(std::string_view name)
     animation_preview_active_ = true;
     active_animation_ = name;
     return true;
+}
+
+void CharacterController::set_facing_rotation_speed(float radians_per_second)
+{
+    facing_rotation_speed_ = std::max(0.0f, radians_per_second);
+}
+
+void CharacterController::set_facing_target(std::optional<float> yaw)
+{
+    facing_target_ = yaw;
+}
+
+MovementState CharacterController::movement_state() const
+{
+    return movement_state_;
 }
 
 CharacterMovementState CharacterController::state() const

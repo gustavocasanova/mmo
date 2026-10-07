@@ -93,14 +93,12 @@ void EditorCamera::update(float delta_seconds, const EditorCameraInput& input)
     }
 
     if (input.look) {
-        const float horizontal_direction = settings_.invert_mouse_x ? -1.0f : 1.0f;
-        const float vertical_direction = settings_.invert_mouse_y ? -1.0f : 1.0f;
         yaw_ = std::remainder(yaw_ +
-            horizontal_direction * static_cast<float>(input.mouse_delta_x) *
+            static_cast<float>(input.mouse_delta_x) *
                 settings_.camera_rotation_speed,
             2.0f * kPi);
         pitch_ = std::clamp(
-            pitch_ + vertical_direction * static_cast<float>(input.mouse_delta_y) *
+            pitch_ - static_cast<float>(input.mouse_delta_y) *
                 settings_.camera_rotation_speed,
             settings_.minimum_pitch, settings_.maximum_pitch);
     }

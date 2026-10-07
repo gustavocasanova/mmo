@@ -4,6 +4,7 @@
 #include "game/world/collision_world.hpp"
 #include "game/world/terrain.hpp"
 
+#include <optional>
 #include <string_view>
 
 namespace mmo::character {
@@ -15,6 +16,18 @@ enum class CharacterMovementState {
     Jumping,
     Falling,
 };
+
+// Drives the lower-body animation layer; independent of the combat state.
+enum class MovementState {
+    Idle,
+    Walk,
+    Run,
+    StrafeLeft,
+    StrafeRight,
+    Backward,
+};
+
+[[nodiscard]] std::string_view to_string(MovementState state);
 
 struct MovementSettings {
     float walk_speed = 2.2f;
@@ -53,6 +66,11 @@ public:
         const game::world::Terrain* terrain = nullptr);
     [[nodiscard]] bool preview_animation(std::string_view name);
     [[nodiscard]] CharacterMovementState state() const;
+    // Optional yaw the character keeps facing (e.g. a combat target) instead of the move direction.
+    void set_facing_target(std::optional<float> yaw);
+    // Radians per second used to turn toward the facing target; 0 keeps the smooth default turn.
+    void set_facing_rotation_speed(float radians_per_second);
+    [[nodiscard]] MovementState movement_state() const;
     [[nodiscard]] bool grounded() const;
     [[nodiscard]] float vertical_velocity() const;
     [[nodiscard]] float yaw() const;
@@ -65,6 +83,9 @@ private:
     Character& character_;
     MovementSettings settings_;
     CharacterMovementState state_ = CharacterMovementState::Idle;
+    MovementState movement_state_ = MovementState::Idle;
+    std::optional<float> facing_target_;
+    float facing_rotation_speed_ = 0.0f;
     math::Vec3 horizontal_velocity_{0.0f};
     float vertical_velocity_ = 0.0f;
     float yaw_ = 0.0f;
