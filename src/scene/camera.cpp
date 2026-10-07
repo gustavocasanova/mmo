@@ -12,19 +12,34 @@ void Camera::set_pose(CameraPose pose)
             throw std::invalid_argument("camera pose must be finite");
         }
     }
-    const auto side = glm::cross(focus - eye, math::Vec3{0, 1, 0});
-    if (glm::dot(side, side) < 1e-8f) {
-        throw std::invalid_argument("camera direction must not be zero or parallel to up");
+    const math::Vec3 direction = focus - eye;
+    if (glm::dot(direction, direction) < 1e-8f) {
+        throw std::invalid_argument("camera eye and focus must not coincide");
     }
     eye_ = eye;
     focus_ = focus;
+    field_of_view_ = pose.field_of_view;
+    near_plane_ = pose.near_plane;
+    far_plane_ = pose.far_plane;
 }
-math::Mat4 Camera::view() const { return glm::lookAtRH(eye_, focus_, math::Vec3{0, 1, 0}); }
+math::Mat4 Camera::view() const
+{
+    const math::Vec3 direction = glm::normalize(focus_ - eye_);
+    const math::Vec3 world_up{0.0f, 1.0f, 0.0f};
+    const math::Vec3 up = std::abs(glm::dot(direction, world_up)) > 0.999f
+        ? math::Vec3{0.0f, 0.0f, 1.0f}
+        : world_up;
+    return glm::lookAtRH(eye_, focus_, up);
+}
 math::Mat4 Camera::projection(float aspect_ratio) const
 {
-    if (!std::isfinite(aspect_ratio) || aspect_ratio <= 0.0f) {
-        throw std::invalid_argument("camera aspect ratio must be positive and finite");
+    if (!std::isfinite(aspect_ratio) || aspect_ratio <= 0.0f ||
+        !std::isfinite(field_of_view_) || field_of_view_ <= 0.0f ||
+        field_of_view_ >= 3.14159265f ||
+        !std::isfinite(near_plane_) || near_plane_ <= 0.0f ||
+        !std::isfinite(far_plane_) || far_plane_ <= near_plane_) {
+        throw std::invalid_argument("camera projection settings are invalid");
     }
-    return glm::perspectiveRH_NO(1.04719755f, aspect_ratio, 0.1f, 160.0f);
+    return glm::perspectiveRH_NO(field_of_view_, aspect_ratio, near_plane_, far_plane_);
 }
 }

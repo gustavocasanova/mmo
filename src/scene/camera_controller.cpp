@@ -1,30 +1,19 @@
 #include "scene/camera_controller.hpp"
 
+#include "game/world/collision_world.hpp"
+
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace mmo::scene {
 namespace {
 
 constexpr float kPi = 3.14159265f;
-constexpr float kGroundHeight = 0.0f;
 
 float wrap_angle(float angle)
 {
     return std::remainder(angle, 2.0f * kPi);
-}
-
-float smoothing_factor(float speed, float delta_seconds)
-{
-    if (speed <= 0.0f) {
-        return 1.0f;
-    }
-    return 1.0f - std::exp(-speed * std::max(delta_seconds, 0.0f));
-}
-
-float smooth_angle(float current, float target, float factor)
-{
-    return current + wrap_angle(target - current) * factor;
 }
 
 }
@@ -32,23 +21,52 @@ float smooth_angle(float current, float target, float factor)
 CameraController::CameraController(CameraSettings settings)
     : settings_(settings)
 {
+    if (!std::isfinite(settings_.minimum_distance) ||
+        !std::isfinite(settings_.maximum_distance) ||
+        !std::isfinite(settings_.initial_distance) ||
+        !std::isfinite(settings_.horizontal_sensitivity) ||
+        !std::isfinite(settings_.vertical_sensitivity) ||
+        !std::isfinite(settings_.minimum_pitch) ||
+        !std::isfinite(settings_.maximum_pitch) ||
+        !std::isfinite(settings_.zoom_speed) ||
+        !std::isfinite(settings_.distance_smoothing_seconds) ||
+        !std::isfinite(settings_.rotation_smoothing_seconds) ||
+        !std::isfinite(settings_.collision_radius) ||
+        !std::isfinite(settings_.minimum_collision_distance) ||
+        !std::isfinite(settings_.target_offset.x) ||
+        !std::isfinite(settings_.target_offset.y) ||
+        !std::isfinite(settings_.target_offset.z)) {
+        throw std::invalid_argument("camera settings must be finite");
+    }
     settings_.minimum_distance = std::max(settings_.minimum_distance, 0.1f);
-    settings_.maximum_distance = std::max(settings_.maximum_distance, settings_.minimum_distance);
-    settings_.initial_distance = std::clamp(settings_.initial_distance,
-        settings_.minimum_distance, settings_.maximum_distance);
-    settings_.minimum_elevation = std::clamp(settings_.minimum_elevation, -1.45f, 1.45f);
-    settings_.maximum_elevation = std::clamp(settings_.maximum_elevation,
-        settings_.minimum_elevation, 1.45f);
+    settings_.maximum_distance = std::max(
+        settings_.maximum_distance, settings_.minimum_distance);
+    settings_.initial_distance = std::clamp(
+        settings_.initial_distance,
+        settings_.minimum_distance,
+        settings_.maximum_distance);
+    settings_.minimum_pitch = std::clamp(
+        settings_.minimum_pitch, -1.553343f, 1.553343f);
+    settings_.maximum_pitch = std::clamp(
+        settings_.maximum_pitch, settings_.minimum_pitch, 1.553343f);
     settings_.horizontal_sensitivity = std::max(settings_.horizontal_sensitivity, 0.0f);
     settings_.vertical_sensitivity = std::max(settings_.vertical_sensitivity, 0.0f);
     settings_.zoom_speed = std::max(settings_.zoom_speed, 0.0f);
-    settings_.smoothing = std::max(settings_.smoothing, 0.0f);
-    settings_.collision_approach_speed = std::max(settings_.collision_approach_speed, 0.0f);
-    settings_.collision_return_speed = std::max(settings_.collision_return_speed, 0.0f);
-    settings_.ground_clearance = std::max(settings_.ground_clearance, 0.0f);
-    desired_camera_yaw_ = kPi;
-    elevation_ = std::clamp(elevation_, settings_.minimum_elevation, settings_.maximum_elevation);
-    target_distance_ = settings_.initial_distance;
+    settings_.distance_smoothing_seconds = std::max(
+        settings_.distance_smoothing_seconds, 0.0f);
+    settings_.rotation_smoothing_seconds = std::max(
+        settings_.rotation_smoothing_seconds, 0.0f);
+    settings_.collision_radius = std::max(settings_.collision_radius, 0.0f);
+    settings_.minimum_collision_distance = std::clamp(
+        settings_.minimum_collision_distance, 0.1f, settings_.minimum_distance);
+    settings_.field_of_view = std::clamp(settings_.field_of_view, 0.01f, kPi - 0.01f);
+    settings_.near_plane = std::max(settings_.near_plane, 0.001f);
+    settings_.far_plane = std::max(settings_.far_plane, settings_.near_plane + 0.001f);
+
+    pitch_ = std::clamp(pitch_, settings_.minimum_pitch, settings_.maximum_pitch);
+    current_pitch_ = pitch_;
+    desired_distance_ = settings_.initial_distance;
+    current_distance_ = desired_distance_;
 }
 
 float CameraController::apply_input(const CameraInput& input)
@@ -57,108 +75,122 @@ float CameraController::apply_input(const CameraInput& input)
     if (input.rotate_camera) {
         yaw_delta = static_cast<float>(input.mouse_delta_x) *
             settings_.horizontal_sensitivity;
-        desired_camera_yaw_ = wrap_angle(desired_camera_yaw_ + yaw_delta);
+        yaw_ = wrap_angle(yaw_ + yaw_delta);
 
         const float vertical_direction = settings_.invert_vertical ? 1.0f : -1.0f;
-        elevation_ = std::clamp(
-            elevation_ + static_cast<float>(input.mouse_delta_y) *
+        pitch_ = std::clamp(
+            pitch_ + static_cast<float>(input.mouse_delta_y) *
                 settings_.vertical_sensitivity * vertical_direction,
-            settings_.minimum_elevation,
-            settings_.maximum_elevation);
+            settings_.minimum_pitch,
+            settings_.maximum_pitch);
     }
 
-    target_distance_ = std::clamp(
-        target_distance_ - static_cast<float>(input.scroll_delta) * settings_.zoom_speed,
+    desired_distance_ = std::clamp(
+        desired_distance_ - static_cast<float>(input.scroll_delta) * settings_.zoom_speed,
         settings_.minimum_distance,
         settings_.maximum_distance);
-    return yaw_delta;
+    return settings_.rotate_target_with_camera ? yaw_delta : 0.0f;
+}
+
+void CameraController::reset_behind_target(float target_yaw)
+{
+    yaw_ = wrap_angle(target_yaw + kPi);
+    current_yaw_ = yaw_;
 }
 
 CameraPose CameraController::update(
     float delta_seconds,
-    float player_x,
-    float player_y,
-    float player_z,
-    float player_yaw,
-    bool align_behind_character)
+    const CameraTarget& target,
+    const game::world::CollisionWorld* collision_world)
 {
-    if (align_behind_character) {
-        desired_camera_yaw_ = wrap_angle(player_yaw + kPi);
-    }
-
-    const float target_focus_x = player_x;
-    const float target_focus_y = player_y + settings_.focus_height;
-    const float target_focus_z = player_z;
-    const float target_yaw = desired_camera_yaw_;
-    float target_elevation = elevation_;
-    float target_distance = target_distance_;
-    bool ground_collision = false;
-
-    const float vertical_direction = std::sin(target_elevation);
-    if (vertical_direction < 0.0f) {
-        const float available_height = target_focus_y -
-            (kGroundHeight + settings_.ground_clearance);
-        const float safe_distance = available_height / -vertical_direction;
-        if (target_distance > safe_distance) {
-            ground_collision = true;
-            if (safe_distance >= settings_.minimum_distance) {
-                target_distance = safe_distance;
-            } else if (target_distance > 0.0f) {
-                const float safe_sine = std::clamp(
-                    -available_height / target_distance, -1.0f, 1.0f);
-                target_elevation = std::asin(safe_sine);
-            }
-        }
-    }
-
-    float distance_speed = settings_.smoothing;
-    if (ground_collision) {
-        distance_speed = settings_.collision_approach_speed;
-    } else if (was_ground_colliding_) {
-        distance_speed = settings_.collision_return_speed;
-    }
-    const float follow_factor = smoothing_factor(settings_.smoothing, delta_seconds);
-    const float distance_factor = smoothing_factor(distance_speed, delta_seconds);
-
+    const float elapsed = std::max(delta_seconds, 0.0f);
+    const math::Vec3 desired_focus = target.position + settings_.target_offset;
     if (!initialized_) {
-        focus_x_ = target_focus_x;
-        focus_y_ = target_focus_y;
-        focus_z_ = target_focus_z;
-        camera_yaw_ = target_yaw;
-        camera_elevation_ = target_elevation;
-        camera_distance_ = target_distance;
+        current_focus_ = desired_focus;
         initialized_ = true;
     } else {
-        focus_x_ += (target_focus_x - focus_x_) * follow_factor;
-        focus_y_ += (target_focus_y - focus_y_) * follow_factor;
-        focus_z_ += (target_focus_z - focus_z_) * follow_factor;
-        camera_yaw_ = smooth_angle(camera_yaw_, target_yaw, follow_factor);
-        camera_elevation_ += (target_elevation - camera_elevation_) * follow_factor;
-        camera_distance_ += (target_distance - camera_distance_) * distance_factor;
-    }
-    was_ground_colliding_ = ground_collision;
-
-    const float current_vertical_direction = std::sin(camera_elevation_);
-    if (current_vertical_direction < 0.0f &&
-        focus_y_ + current_vertical_direction * camera_distance_ <
-            kGroundHeight + settings_.ground_clearance) {
-        const float minimum_safe_sine = std::clamp(
-            (kGroundHeight + settings_.ground_clearance - focus_y_) /
-                std::max(camera_distance_, settings_.minimum_distance),
-            -1.0f,
-            1.0f);
-        camera_elevation_ = std::max(camera_elevation_, std::asin(minimum_safe_sine));
+        const float focus_smoothing = settings_.distance_smoothing_seconds;
+        const float focus_factor = focus_smoothing <= 0.0f
+            ? 1.0f
+            : 1.0f - std::exp(-elapsed / focus_smoothing);
+        current_focus_ += (desired_focus - current_focus_) * focus_factor;
     }
 
-    const float horizontal_distance = camera_distance_ * std::cos(camera_elevation_);
-    return {
-        focus_x_ + std::sin(camera_yaw_) * horizontal_distance,
-        focus_y_ + std::sin(camera_elevation_) * camera_distance_,
-        focus_z_ + std::cos(camera_yaw_) * horizontal_distance,
-        focus_x_,
-        focus_y_,
-        focus_z_,
+    const float rotation_factor = settings_.rotation_smoothing_seconds <= 0.0f
+        ? 1.0f
+        : 1.0f - std::exp(-elapsed / settings_.rotation_smoothing_seconds);
+    current_yaw_ = wrap_angle(current_yaw_ +
+        wrap_angle(yaw_ - current_yaw_) * rotation_factor);
+    current_pitch_ += (pitch_ - current_pitch_) * rotation_factor;
+
+    const math::Vec3 desired_offset{
+        std::sin(current_yaw_) * std::cos(current_pitch_) * desired_distance_,
+        std::sin(current_pitch_) * desired_distance_,
+        std::cos(current_yaw_) * std::cos(current_pitch_) * desired_distance_,
     };
+    const math::Vec3 desired_eye = current_focus_ + desired_offset;
+    float target_distance = desired_distance_;
+    bool obstructed = false;
+    if (collision_world != nullptr) {
+        const float hit_distance = collision_world->camera_distance(
+            current_focus_, desired_eye, settings_.collision_radius);
+        if (hit_distance < desired_distance_) {
+            target_distance = std::min(
+                desired_distance_,
+                std::max(settings_.minimum_collision_distance, hit_distance - 0.02f));
+            obstructed = true;
+        }
+    }
+    const float distance_factor = settings_.distance_smoothing_seconds <= 0.0f
+        ? 1.0f
+        : 1.0f - std::exp(-elapsed / settings_.distance_smoothing_seconds);
+    if (obstructed && target_distance < current_distance_) {
+        current_distance_ = target_distance;
+    } else {
+        current_distance_ += (target_distance - current_distance_) * distance_factor;
+    }
+
+    const math::Vec3 camera_offset{
+        std::sin(current_yaw_) * std::cos(current_pitch_) * current_distance_,
+        std::sin(current_pitch_) * current_distance_,
+        std::cos(current_yaw_) * std::cos(current_pitch_) * current_distance_,
+    };
+    const math::Vec3 eye = current_focus_ + camera_offset;
+    return {
+        eye.x, eye.y, eye.z,
+        current_focus_.x, current_focus_.y, current_focus_.z,
+        settings_.field_of_view, settings_.near_plane, settings_.far_plane,
+    };
+}
+
+const CameraSettings& CameraController::settings() const
+{
+    return settings_;
+}
+
+float CameraController::yaw() const
+{
+    return yaw_;
+}
+
+float CameraController::pitch() const
+{
+    return pitch_;
+}
+
+float CameraController::desired_distance() const
+{
+    return desired_distance_;
+}
+
+float CameraController::current_distance() const
+{
+    return current_distance_;
+}
+
+float CameraController::actual_distance() const
+{
+    return current_distance_;
 }
 
 }

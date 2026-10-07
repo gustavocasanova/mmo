@@ -2,20 +2,38 @@
 
 #include "assets/model.hpp"
 #include "animation/skeleton.hpp"
-#include "renderer/character.hpp"
+#include "game/world/collision_world.hpp"
+#include "game/world/terrain.hpp"
+#include "scene/camera.hpp"
 
 #include <memory>
+#include <optional>
 #include <span>
+#include <cstdint>
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 namespace mmo::renderer {
 
-struct CameraView {
-    float eye_x;
-    float eye_y;
-    float eye_z;
-    float focus_x;
-    float focus_y;
-    float focus_z;
+struct RenderBox {
+    std::uint64_t id;
+    glm::vec3 center;
+    glm::vec3 half_extents;
+    glm::vec3 rotation_degrees;
+    glm::vec3 scale;
+};
+
+enum class GizmoMode {
+    translate,
+    rotate,
+    scale,
+};
+
+struct CharacterPlacement {
+    float x;
+    float y;
+    float z;
+    float yaw;
 };
 
 class Renderer {
@@ -25,17 +43,26 @@ public:
     Renderer& operator=(const Renderer&) = delete;
     ~Renderer();
 
-    void set_character_equipment(const CharacterEquipment& equipment);
     void set_character_model(const assets::Model& model);
     void set_skinning_matrices(std::span<const animation::Matrix4> matrices);
+    void set_terrain(const game::world::Terrain& terrain);
+    void set_brush_cursor(
+        const game::world::Terrain& terrain,
+        glm::vec2 center,
+        float radius,
+        bool visible);
 
     void render(
         int framebuffer_width,
         int framebuffer_height,
-        float player_x,
-        float player_z,
-        float player_yaw,
-        const CameraView& camera) const;
+        const CharacterPlacement& player,
+        const scene::CameraPose& camera,
+        const game::world::CollisionWorld& collision_world,
+        std::optional<std::uint64_t> selected_object = std::nullopt,
+        std::span<const RenderBox> editor_boxes = {},
+        bool show_editor_gizmo = false,
+        glm::vec3 gizmo_position = glm::vec3{0.0f},
+        GizmoMode gizmo_mode = GizmoMode::translate) const;
 
 private:
     struct Impl;

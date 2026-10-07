@@ -4,7 +4,17 @@
 
 O projeto tem um protótipo 3D local com terreno procedural, personagem procedural com equipamentos interativos, iluminação direcional simples, câmera em terceira pessoa e movimentação WASD. Os componentes do Marco 002 estão implementados, com parte do Marco 003 já disponível.
 
-A próxima etapa é completar o Mundo 3D do Marco 003, principalmente carregamento de modelos e texturas. A numeração exibida na janela não indica que todos os requisitos anteriores foram concluídos.
+A próxima etapa é completar o Mundo 3D do Marco 003, principalmente carregamento de modelos e texturas. A primeira ferramenta de terreno também já permite esculpir e persistir o heightfield atual; não substitui o carregamento de assets nem a validação visual do marco. A numeração exibida na janela não indica que todos os requisitos anteriores foram concluídos.
+
+## World Editor incremental
+
+- [x] **Marco 1 — Editor Mode:** F1 alterna Game Mode/World Editor Mode e pausa/restaura o controlador do personagem sem destruir seu estado. Inputs da ferramenta de terreno só são aceitos no modo editor.
+- [x] **Marco 2 — Editor Camera:** câmera fly dedicada, WASD, Q/E, mouse look (RMB), modificadores Shift/Ctrl e ajuste de velocidade na roda.
+- [ ] Órbita e pan da câmera de edição ainda pendentes.
+- [x] **Marco 3 — Selection:** raycast da câmera, selecionar/limpar com clique esquerdo, escolha do objeto mais próximo e highlight visual dos objetos selecionáveis atuais; F enquadra o alvo selecionado.
+- [ ] Marcos seguintes: transformação, hierarquia e assets, ferramentas avançadas de terreno, serialização completa de mundo e undo/redo.
+
+Validação: testes CPU de modo, câmera e seleção; confirmar na janela F1 alternando os modos. O Marco 1 mantém movimento/pulo do personagem exclusivos do Game Mode. No editor, a câmera fly permite navegação e foco da seleção; órbita/pan ainda não estão disponíveis.
 
 ## Marco 001 — Janela e triângulo
 
@@ -34,6 +44,7 @@ Estado no código:
 - [ ] Carregamento de modelos: o personagem atual é procedural; existe um contrato ModelLoader, mas nenhum parser GLB/glTF integrado.
 - [ ] Carregamento de texturas: o terreno atual usa cores e padrão procedural no shader.
 - [x] Terreno básico procedural.
+- [x] Primeiro fluxo de edição do terreno: elevar, baixar, nivelar e salvar/carregar.
 - [x] Iluminação direcional simples.
 - [x] Câmera em terceira pessoa com órbita, zoom e suavização.
 - [x] Movimentação WASD básica.

@@ -133,7 +133,32 @@ O alvo `mmo_character` contém assets, skeleton/animation, character e equipment
 
 O corpo base é um `CharacterBody` que referencia um model com skeleton. `CharacterModel` combina corpo, `AnimationController`, aparência e `EquipmentManager`. Equipment é dado independente por slot; `EquipmentManager::equip` valida o formato `.glb`/`.gltf`, attachments e bones antes de substituir o slot. Vários attachments por item cobrem peças bilaterais. O manager não carrega modelos nem chama OpenGL. `Character` mantém transform e stats mínimos.
 
-O cliente usa `personagem/characterRIGGED.glb` como modelo local e toca o clip `Slow Run` ao mover quando não há um clip `Walk`. O asset tem 65 joints e foi construído pelo script Blender `scripts/build_male_run_animation.py` a partir do personagem masculino glTF e da animação FBX. Sem um clip `Idle`, o personagem volta à pose de bind quando para. Texturas ainda não são enviadas à GPU. O CTest verifica a lógica CPU e a animação do asset runtime.
+O cliente usa `Universal Animation Library[Standard]/Unreal-Godot/UAL1_Standard.glb` como modelo local, com 43 clips e rig humanoide. As animações `Idle_Loop`, `Walk_Loop`, `Jog_Fwd_Loop` e `Jump_Loop` atendem aos estados de repouso e locomoção; o pulo em Espaço encadeia início, loop e aterrissagem. A/D movem para esquerda/direita. Texturas ainda não são enviadas à GPU. O CTest valida o asset e as poses dos clips.
+
+## World Editor — Marco 1
+
+`mmo_editor` contém `editor::WorldEditor`, `EngineMode` e a câmera CPU-only
+`editor::EditorCamera`, sem dependência de GLFW ou renderer. A aplicação cliente é a
+camada de composição: consulta F1, pausa integralmente `CharacterController::update`
+no modo World Editor e volta a atualizá-lo em Game Mode. O personagem permanece vivo
+no mesmo estado; não é destruído nem recriado.
+
+F1 alterna entre Game Mode e World Editor Mode por borda de tecla (segurar F1 não
+alterna repetidamente). No editor, a câmera fly começa na pose da câmera de jogo:
+WASD voa relativo à orientação, E/Q sobe/desce, botão direito + mouse olha, Shift
+acelera, Ctrl permite movimento preciso e a roda ajusta a velocidade configurável.
+A câmera orbital do jogo não é substituída e sua pose fica preservada enquanto o
+editor está ativo. F2 ativa/desativa as ferramentas de terreno já existentes para
+liberar E como movimento vertical; com as ferramentas ativas a roda ajusta o pincel.
+`editor::SelectionManager` lança raio contra bounds AABB dos objetos selecionáveis,
+seleciona o hit mais próximo com clique esquerdo e limpa a seleção ao clicar no vazio.
+Os colliders estáticos da cena de demonstração servem como alvos iniciais; o renderer
+destaca o alvo selecionado com uma cor de seleção. Os IDs atuais são locais à cena de
+demonstração, não identidades persistentes de entidades. WASD do editor usa o sentido
+de strafe visual: D move para a direita da tela e A para a esquerda. F enquadra o centro
+do objeto selecionado à distância configurada. Órbita e pan aguardam um marco de câmera
+avançada. Gizmos, UI, undo/redo e serialização de entidades também não fazem parte deste
+marco.
 
 ## Rede, simulação e persistência
 
@@ -159,4 +184,17 @@ Desenvolver o cliente no Windows 11/VS 2022 x64. Planejar o servidor para Linux 
 
 ## Estado executável atual
 
-`mmo_client` abre uma janela OpenGL 3.3 Core e renderiza terreno quadriculado e o modelo rigged local com câmera orbital suavizada. `CameraController` concentra sensibilidade, zoom, foco, elevação e suavização; `Application` controla movimento local, carregamento do personagem e atualização das animações; `Window` encapsula GLFW, captura do mouse e perda de foco. A lógica CPU segue coberta por dados sintéticos. O asset atual não tem clips; texturas ainda não são enviadas à GPU. A câmera evita atravessar o plano do chão. Ainda não há geometria de cenário, colliders ou raycast para bloquear paredes/árvores; a simulação autoritativa, rede e servidor também não existem.
+`mmo_client` abre uma janela OpenGL 3.3 Core e renderiza terreno quadriculado e o modelo rigged local com câmera orbital suavizada. `CameraController` concentra sensibilidade, zoom, foco, elevação e suavização; `Application` controla movimento local, carregamento do personagem e atualização das animações; `Window` encapsula GLFW, captura do mouse e perda de foco. A lógica CPU segue coberta por dados sintéticos. Texturas ainda não são enviadas à GPU. A câmera evita atravessar o plano do chão. Ainda não há geometria de cenário, colliders ou raycast para bloquear paredes/árvores; a simulação autoritativa, rede e servidor também não existem.
+
+### Ferramenta inicial de terreno
+
+`game::world::Terrain` guarda um heightfield CPU de 96 × 96 células, com amostragem,
+escultura radial, interseção de raio e leitura/escrita versionada. O renderer converte
+seus triângulos em uma mesh OpenGL atualizável; o controlador de personagem consulta a
+altura do terreno ao caminhar e ao aterrissar.
+
+No cliente, `E` alterna o modo de edição. Os botões 1/2/3 selecionam elevar, baixar e
+nivelar; o botão esquerdo aplica o pincel e a roda altera seu raio. `Ctrl+S` salva em
+`content/worlds/demo.mmoterrain` e `Ctrl+L` carrega esse arquivo. A câmera continua
+orbitando com o botão direito fora do modo de edição. O arquivo usa texto versionado
+com uma amostra de altura por vértice; carregamentos inválidos falham explicitamente.

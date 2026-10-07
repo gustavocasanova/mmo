@@ -13,6 +13,7 @@ src/
   scene/              Camera, CameraController, Material e DrawItem
   renderer/           Renderer, Shader e Mesh (recursos GPU)
     opengl/           implementação do shader e buffers OpenGL
+  editor/             WorldEditor, EngineMode e câmera fly (CPU)
   animation/          skeleton, clips, poses e crossfade (main)
   character/          corpo/modelo, aparência e atributos (main)
   equipment/          slots e attachments CPU (main)
@@ -69,6 +70,7 @@ As convenções matemáticas são: mundo destro, Y para cima, frente do personag
 | Definições de item, inventário e equipamento | `game/items/` |
 | Aparência de equipamento ou personagem | `game/client/` |
 | Limites, colisão e regras do mundo | `game/world/` |
+| Modos e ferramentas de edição do cliente | `editor/`, coordenados por `apps/client/` |
 | Sessões e sincronização | novos módulos `network/` e `game/server/` no Marco 005 |
 
 ## Orientação a objetos aplicada

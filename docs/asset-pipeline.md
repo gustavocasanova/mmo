@@ -6,13 +6,15 @@ GLB é o formato de runtime/distribuição preferido; glTF separado também é a
 
 `assets::Model` mantém dados CPU: nodes, meshes, indices, materiais, referência/dados RGBA de textura, skeleton, inverse-bind matrices e clips. A validação checa referências, hierarquias, pesos de skinning e canais de animação. O loader extrai geometria triangular, normals, cores base, até quatro pesos por vértice, skin e animações com interpolação `LINEAR` ou `STEP`. Decodificação/upload de texturas e renderização de vários skins no mesmo modelo ainda não estão implementados.
 
-O cliente carrega `personagem/characterRIGGED.glb`. Para regenerar o personagem masculino com a animação baixada, mantenha os arquivos de origem nas pastas atuais e execute na raiz do repositório:
+O cliente carrega `Universal Animation Library[Standard]/Unreal-Godot/UAL1_Standard.glb`, que traz a malha, a rig humanoide e os clips de animação juntos. O arquivo `_RM` inclui root motion baked nas animações; o cliente usa a variante sem root motion porque a movimentação do personagem é aplicada pelo próprio cliente.
+
+O asset anterior do personagem masculino ainda pode ser regenerado com o script abaixo. Mantenha os arquivos de origem nas pastas atuais e execute na raiz do repositório:
 
 ```powershell
 blender --background --python scripts\build_male_run_animation.py
 ```
 
-O script importa `Superhero_Male_FullBody.gltf` e `Slow Run.fbx`, mapeia os ossos Mixamo para a rig do personagem, remove o deslocamento horizontal do root motion (o cliente já move o personagem) e exporta um GLB temporário. Ele só substitui o modelo runtime após validar o skin e o clip. O renderer suporta os 65 joints do personagem mais a raiz compartilhada. A animação `Slow Run` é usada como fallback do estado de movimento quando não há um clip `Walk`; assim, ela toca durante o movimento e volta à pose de bind quando o personagem para. Um clip `Idle` é necessário para evitar a pose de bind parado.
+O script importa `Superhero_Male_FullBody.gltf` e `Slow Run.fbx`, mapeia os ossos Mixamo para a rig do personagem e exporta um GLB temporário. Ele só substitui o modelo runtime após validar o skin e o clip. O renderer suporta até 66 joints.
 
 O modelo importado requer as texturas referenciadas pelos arquivos glTF para a aparência completa. A renderização de texturas ainda não está implementada; o cliente usa as cores base.
 

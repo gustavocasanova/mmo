@@ -1,11 +1,10 @@
 #include "renderer/renderer.hpp"
 
 #include "platform/window.hpp"
-#include "renderer/camera.hpp"
-#include "renderer/character.hpp"
-#include "renderer/material.hpp"
 #include "renderer/mesh.hpp"
 #include "renderer/shader.hpp"
+#include "scene/camera.hpp"
+#include "scene/material.hpp"
 
 #include <glad/gl.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -287,6 +286,75 @@ std::vector<Vertex> make_ground_vertices()
     return vertices;
 }
 
+std::vector<Vertex> make_brush_ring_vertices()
+{
+    std::vector<Vertex> vertices;
+    constexpr int segments = 48;
+    vertices.reserve(segments * 6);
+    constexpr float inner_ratio = 0.96f;
+    constexpr float two_pi = 6.28318530718f;
+    constexpr Vec3 normal{0.0f, 1.0f, 0.0f};
+    constexpr Vec3 color{1.0f, 1.0f, 1.0f};
+    for (int segment = 0; segment < segments; ++segment) {
+        const float first_angle = two_pi * static_cast<float>(segment) / segments;
+        const float second_angle = two_pi * static_cast<float>(segment + 1) / segments;
+        const Vec3 outer_first{std::cos(first_angle), 0.0f, std::sin(first_angle)};
+        const Vec3 outer_second{std::cos(second_angle), 0.0f, std::sin(second_angle)};
+        const Vec3 inner_first{outer_first.x * inner_ratio, 0.0f,
+            outer_first.z * inner_ratio};
+        const Vec3 inner_second{outer_second.x * inner_ratio, 0.0f,
+            outer_second.z * inner_ratio};
+        append_vertex(vertices, outer_first, normal, color);
+        append_vertex(vertices, inner_second, normal, color);
+        append_vertex(vertices, outer_second, normal, color);
+        append_vertex(vertices, outer_first, normal, color);
+        append_vertex(vertices, inner_first, normal, color);
+        append_vertex(vertices, inner_second, normal, color);
+    }
+    return vertices;
+}
+
+std::vector<Vertex> make_box_vertices()
+{
+    std::vector<Vertex> vertices;
+    vertices.reserve(36);
+    constexpr Vec3 color{1.0f, 1.0f, 1.0f};
+    append_quad(vertices,
+        {-0.5f, 0.0f, 0.5f}, {0.5f, 0.0f, 0.5f},
+        {0.5f, 1.0f, 0.5f}, {-0.5f, 1.0f, 0.5f},
+        {0.0f, 0.0f, 1.0f}, color);
+    append_quad(vertices,
+        {0.5f, 0.0f, -0.5f}, {-0.5f, 0.0f, -0.5f},
+        {-0.5f, 1.0f, -0.5f}, {0.5f, 1.0f, -0.5f},
+        {0.0f, 0.0f, -1.0f}, color);
+    append_quad(vertices,
+        {0.5f, 0.0f, 0.5f}, {0.5f, 0.0f, -0.5f},
+        {0.5f, 1.0f, -0.5f}, {0.5f, 1.0f, 0.5f},
+        {1.0f, 0.0f, 0.0f}, color);
+    append_quad(vertices,
+        {-0.5f, 0.0f, -0.5f}, {-0.5f, 0.0f, 0.5f},
+        {-0.5f, 1.0f, 0.5f}, {-0.5f, 1.0f, -0.5f},
+        {-1.0f, 0.0f, 0.0f}, color);
+    append_quad(vertices,
+        {-0.5f, 1.0f, -0.5f}, {-0.5f, 1.0f, 0.5f},
+        {0.5f, 1.0f, 0.5f}, {0.5f, 1.0f, -0.5f},
+        {0.0f, 1.0f, 0.0f}, color);
+    append_quad(vertices,
+        {-0.5f, 0.0f, 0.5f}, {-0.5f, 0.0f, -0.5f},
+        {0.5f, 0.0f, -0.5f}, {0.5f, 0.0f, 0.5f},
+        {0.0f, -1.0f, 0.0f}, color);
+    return vertices;
+}
+
+std::vector<Vertex> make_placeholder_vertices()
+{
+    return {
+        {{0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
+        {{0.1f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
+        {{0.0f, 0.1f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
+    };
+}
+
 constexpr char kVertexShaderSource[] = R"(#version 330 core
 layout (location = 0) in vec3 a_position;
 layout (location = 1) in vec3 a_normal;
@@ -369,17 +437,23 @@ void log_gl_info()
 }
 
 struct Renderer::Impl {
-    Camera camera;
+    scene::Camera camera;
     Shader program{kVertexShaderSource, kFragmentShaderSource};
     Mesh ground{make_ground_vertices()};
-    CharacterEquipment equipment{make_default_character_equipment()};
-    Mesh character{make_character_vertices(equipment)};
+    Mesh brush_ring{make_brush_ring_vertices()};
+    Mesh wall{make_box_vertices()};
+    Mesh gizmo{make_box_vertices()};
+    Mesh character{make_placeholder_vertices()};
     std::vector<glm::mat4> skinning_matrices;
+    std::vector<glm::mat4> bind_pose_matrices;
     unsigned int skinning_buffer = 0;
     glm::vec3 character_offset{0.0f};
     float character_scale = 1.0f;
-    Material ground_material{{1.0f, 1.0f, 1.0f}, true};
-    Material character_material{{1.0f, 1.0f, 1.0f}, false};
+    scene::Material ground_material{{1.0f, 1.0f, 1.0f},
+        scene::SurfacePattern::checker_grid};
+    bool brush_cursor_visible = false;
+    scene::Material character_material{{1.0f, 1.0f, 1.0f},
+        scene::SurfacePattern::solid};
 
     Impl()
     {
@@ -414,12 +488,6 @@ Renderer::Renderer()
 }
 
 Renderer::~Renderer() = default;
-
-void Renderer::set_character_equipment(const CharacterEquipment& equipment)
-{
-    impl_->equipment = equipment;
-    impl_->character.update(make_character_vertices(impl_->equipment));
-}
 
 void Renderer::set_character_model(const assets::Model& model)
 {
@@ -456,6 +524,11 @@ void Renderer::set_character_model(const assets::Model& model)
         -(minimum.z + maximum.z) * 0.5f * impl_->character_scale,
     };
     impl_->character.update(vertices);
+    const animation::Animator bind_pose(model.skeleton);
+    impl_->bind_pose_matrices.reserve(bind_pose.pose().skin_matrices.size());
+    for (const animation::Matrix4& matrix : bind_pose.pose().skin_matrices) {
+        impl_->bind_pose_matrices.push_back(glm::make_mat4(matrix.data()));
+    }
 }
 
 void Renderer::set_skinning_matrices(std::span<const animation::Matrix4> matrices)
@@ -470,13 +543,87 @@ void Renderer::set_skinning_matrices(std::span<const animation::Matrix4> matrice
     }
 }
 
+void Renderer::set_terrain(const game::world::Terrain& terrain)
+{
+    const std::vector<game::world::TerrainVertex> terrain_vertices = terrain.vertices();
+    std::vector<MeshVertex> vertices;
+    vertices.reserve(terrain_vertices.size());
+    for (const game::world::TerrainVertex& vertex : terrain_vertices) {
+        vertices.push_back({
+            vertex.position,
+            vertex.normal,
+            {1.0f, 1.0f, 1.0f},
+            {},
+            {},
+        });
+    }
+    impl_->ground.update(vertices);
+}
+
+void Renderer::set_brush_cursor(
+    const game::world::Terrain& terrain,
+    glm::vec2 center,
+    float radius,
+    bool visible)
+{
+    impl_->brush_cursor_visible = visible;
+    if (!visible) {
+        return;
+    }
+    if (!terrain.contains(center) || !std::isfinite(radius) || radius <= 0.0f) {
+        throw std::invalid_argument("terrain brush cursor parameters are invalid");
+    }
+
+    constexpr int segments = 48;
+    constexpr float inner_ratio = 0.96f;
+    constexpr float two_pi = 6.28318530718f;
+    constexpr float vertical_offset = 0.035f;
+    std::vector<MeshVertex> vertices;
+    vertices.reserve(segments * 6);
+    const auto make_point = [&](float angle, float distance) {
+        const glm::vec2 horizontal{
+            std::clamp(center.x + std::cos(angle) * distance,
+                -game::world::Terrain::kHalfExtent, game::world::Terrain::kHalfExtent),
+            std::clamp(center.y + std::sin(angle) * distance,
+                -game::world::Terrain::kHalfExtent, game::world::Terrain::kHalfExtent),
+        };
+        return glm::vec3{
+            horizontal.x, terrain.height_at(horizontal) + vertical_offset, horizontal.y};
+    };
+    for (int segment = 0; segment < segments; ++segment) {
+        const float first_angle = two_pi * static_cast<float>(segment) / segments;
+        const float second_angle = two_pi * static_cast<float>(segment + 1) / segments;
+        const glm::vec3 outer_first = make_point(first_angle, radius);
+        const glm::vec3 outer_second = make_point(second_angle, radius);
+        const glm::vec3 inner_first = make_point(first_angle, radius * inner_ratio);
+        const glm::vec3 inner_second = make_point(second_angle, radius * inner_ratio);
+        constexpr glm::vec3 normal{0.0f, 1.0f, 0.0f};
+        constexpr glm::vec3 color{1.0f, 1.0f, 1.0f};
+        const auto append = [&vertices, &normal, &color](
+            glm::vec3 position) {
+            vertices.push_back({position, normal, color, {}, {}});
+        };
+        append(outer_first);
+        append(inner_second);
+        append(outer_second);
+        append(outer_first);
+        append(inner_first);
+        append(inner_second);
+    }
+    impl_->brush_ring.update(vertices);
+}
+
 void Renderer::render(
     int framebuffer_width,
     int framebuffer_height,
-    float player_x,
-    float player_z,
-    float player_yaw,
-    const CameraView& camera) const
+    const CharacterPlacement& player,
+    const scene::CameraPose& camera,
+    const game::world::CollisionWorld& collision_world,
+    std::optional<std::uint64_t> selected_object,
+    std::span<const RenderBox> editor_boxes,
+    bool show_editor_gizmo,
+    glm::vec3 gizmo_position,
+    GizmoMode gizmo_mode) const
 {
     if (framebuffer_width <= 0 || framebuffer_height <= 0) {
         return;
@@ -486,21 +633,23 @@ void Renderer::render(
     glClearColor(0.48f, 0.66f, 0.78f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     impl_->program.bind();
-    if (!impl_->skinning_matrices.empty()) {
+    const auto upload_skinning_matrices = [this](const std::vector<glm::mat4>& matrices) {
+        if (matrices.empty()) {
+            return;
+        }
         glBindBuffer(GL_UNIFORM_BUFFER, impl_->skinning_buffer);
         glBufferSubData(GL_UNIFORM_BUFFER, 0,
             static_cast<GLsizeiptr>(
-                sizeof(glm::mat4) * impl_->skinning_matrices.size()),
-            impl_->skinning_matrices.data());
+                sizeof(glm::mat4) * matrices.size()),
+            matrices.data());
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
-    }
+    };
+    upload_skinning_matrices(impl_->skinning_matrices);
 
-    impl_->camera.set_projection(framebuffer_width, framebuffer_height);
-    impl_->camera.set_view(
-        {camera.eye_x, camera.eye_y, camera.eye_z},
-        {camera.focus_x, camera.focus_y, camera.focus_z});
-    const Mat4 projection = from_glm(impl_->camera.projection_matrix());
-    const Mat4 view = from_glm(impl_->camera.view_matrix());
+    impl_->camera.set_pose(camera);
+    const Mat4 projection = from_glm(impl_->camera.projection(
+        static_cast<float>(framebuffer_width) / static_cast<float>(framebuffer_height)));
+    const Mat4 view = from_glm(impl_->camera.view());
     const Mat4 ground_model = identity_matrix();
 
     const auto set_matrices = [this, &projection, &view](const Mat4& model) {
@@ -518,19 +667,163 @@ void Renderer::render(
 
     set_matrices(ground_model);
     impl_->program.set_int("u_is_skinned", 0);
-    impl_->ground_material.apply(impl_->program);
+    impl_->program.set_vec3("u_tint", impl_->ground_material.tint);
+    impl_->program.set_int("u_is_ground",
+        impl_->ground_material.pattern == scene::SurfacePattern::checker_grid ? 1 : 0);
     impl_->ground.draw();
 
-    const Mat4 character_model = multiply(
-        translation_matrix({player_x + impl_->character_offset.x,
-            impl_->character_offset.y, player_z + impl_->character_offset.z}),
-        multiply(rotation_y_matrix(player_yaw),
-            scale_matrix({impl_->character_scale, impl_->character_scale,
-                impl_->character_scale})));
-    set_matrices(character_model);
+    if (impl_->brush_cursor_visible) {
+        impl_->program.set_int("u_is_skinned", 0);
+        impl_->program.set_int("u_is_ground", 0);
+        impl_->program.set_vec3("u_tint", {1.0f, 0.82f, 0.18f});
+        impl_->brush_ring.draw();
+    }
+
+    impl_->program.set_int("u_is_skinned", 0);
+    impl_->program.set_int("u_is_ground", 0);
+    impl_->program.set_int("u_is_skinned", 0);
+    if (!editor_boxes.empty()) {
+        for (const RenderBox& box : editor_boxes) {
+            glm::mat4 model{1.0f};
+            model = glm::translate(model, box.center);
+            model = glm::rotate(model, glm::radians(box.rotation_degrees.y),
+                {0.0f, 1.0f, 0.0f});
+            model = glm::rotate(model, glm::radians(box.rotation_degrees.x),
+                {1.0f, 0.0f, 0.0f});
+            model = glm::rotate(model, glm::radians(box.rotation_degrees.z),
+                {0.0f, 0.0f, 1.0f});
+            model = glm::scale(model, box.half_extents * 2.0f * box.scale);
+            model = glm::translate(model, {0.0f, -0.5f, 0.0f});
+            set_matrices(from_glm(model));
+            const bool selected = selected_object && *selected_object == box.id;
+            impl_->program.set_vec3("u_tint", selected
+                ? glm::vec3{1.0f, 0.72f, 0.12f}
+                : glm::vec3{0.46f, 0.39f, 0.30f});
+            impl_->wall.draw();
+        }
+    } else {
+        std::uint64_t object_id = 1;
+        for (const game::world::CollisionBox& box : collision_world.boxes()) {
+            const Vec3 center{
+                (box.minimum.x + box.maximum.x) * 0.5f,
+                box.minimum.y,
+                (box.minimum.z + box.maximum.z) * 0.5f,
+            };
+            const Vec3 size{
+                box.maximum.x - box.minimum.x,
+                box.maximum.y - box.minimum.y,
+                box.maximum.z - box.minimum.z,
+            };
+            set_matrices(multiply(translation_matrix(center), scale_matrix(size)));
+            const bool selected = selected_object && *selected_object == object_id;
+            impl_->program.set_vec3("u_tint", selected
+                ? glm::vec3{1.0f, 0.72f, 0.12f}
+                : glm::vec3{0.46f, 0.39f, 0.30f});
+            impl_->wall.draw();
+            ++object_id;
+        }
+    }
+
+    if (show_editor_gizmo) {
+        const glm::mat4 origin = glm::translate(glm::mat4{1.0f}, gizmo_position);
+        constexpr float shaft_radius = 0.035f;
+        constexpr float shaft_length = 1.25f;
+        const std::array<glm::vec3, 3> colors{
+            glm::vec3{0.95f, 0.12f, 0.10f},
+            glm::vec3{0.18f, 0.92f, 0.18f},
+            glm::vec3{0.12f, 0.38f, 1.0f},
+        };
+        const std::array<glm::vec3, 3> axes{
+            glm::vec3{1.0f, 0.0f, 0.0f},
+            glm::vec3{0.0f, 1.0f, 0.0f},
+            glm::vec3{0.0f, 0.0f, 1.0f},
+        };
+        const std::array<glm::vec3, 3> rotation_axes{
+            glm::vec3{0.0f, 0.0f, -1.57079633f},
+            glm::vec3{0.0f},
+            glm::vec3{1.57079633f, 0.0f, 0.0f},
+        };
+        if (gizmo_mode == GizmoMode::rotate) {
+            glDisable(GL_CULL_FACE);
+            impl_->program.set_int("u_is_skinned", 0);
+            impl_->program.set_int("u_is_ground", 0);
+            impl_->program.set_vec3("u_tint", {1.0f, 1.0f, 1.0f});
+            for (int axis = 0; axis < 3; ++axis) {
+                std::vector<MeshVertex> ring;
+                constexpr int segments = 64;
+                constexpr float inner_radius = 0.96f;
+                constexpr float outer_radius = 1.0f;
+                ring.reserve(segments * 6);
+                const auto point = [axis](float angle, float radius) {
+                    const float first = std::cos(angle) * radius;
+                    const float second = std::sin(angle) * radius;
+                    if (axis == 0) return glm::vec3{0.0f, first, second};
+                    if (axis == 1) return glm::vec3{first, 0.0f, second};
+                    return glm::vec3{first, second, 0.0f};
+                };
+                for (int segment = 0; segment < segments; ++segment) {
+                    const float first_angle = 6.28318530718f * segment / segments;
+                    const float second_angle = 6.28318530718f * (segment + 1) / segments;
+                    const glm::vec3 outer_first = point(first_angle, outer_radius);
+                    const glm::vec3 outer_second = point(second_angle, outer_radius);
+                    const glm::vec3 inner_first = point(first_angle, inner_radius);
+                    const glm::vec3 inner_second = point(second_angle, inner_radius);
+                    const glm::vec3 normal = axes[axis];
+                    const glm::vec3 color = colors[axis];
+                    for (const glm::vec3& vertex : {
+                             outer_first, inner_first, outer_second,
+                             outer_second, inner_first, inner_second}) {
+                        ring.push_back({vertex, normal, color, {}, {}});
+                    }
+                }
+                impl_->gizmo.update(ring);
+                set_matrices(from_glm(origin));
+                impl_->gizmo.draw();
+            }
+            glEnable(GL_CULL_FACE);
+        } else {
+            for (int axis = 0; axis < 3; ++axis) {
+                glm::mat4 model = origin;
+                if (gizmo_mode == GizmoMode::translate) {
+                    model = glm::translate(model, axes[axis] * (shaft_length * 0.5f));
+                    model = glm::rotate(model,
+                        axis == 0 ? -1.57079633f : axis == 2 ? 1.57079633f : 0.0f,
+                        axis == 0 ? glm::vec3{0.0f, 0.0f, 1.0f} :
+                            glm::vec3{1.0f, 0.0f, 0.0f});
+                    model = glm::scale(model,
+                        {shaft_radius, shaft_length, shaft_radius});
+                } else {
+                    model = glm::translate(model, axes[axis] * (shaft_length * 0.5f));
+                    model = glm::rotate(model, rotation_axes[axis].x,
+                        {1.0f, 0.0f, 0.0f});
+                    model = glm::rotate(model, rotation_axes[axis].z,
+                        {0.0f, 0.0f, 1.0f});
+                    model = glm::scale(model, {shaft_radius * 2.0f,
+                        shaft_length, shaft_radius * 2.0f});
+                }
+                set_matrices(from_glm(model));
+                impl_->program.set_vec3("u_tint", colors[axis]);
+                impl_->gizmo.draw();
+            }
+        }
+    }
+
+    const auto character_matrix = [this](const CharacterPlacement& placement) {
+        return multiply(
+            translation_matrix({placement.x + impl_->character_offset.x,
+                placement.y + impl_->character_offset.y,
+                placement.z + impl_->character_offset.z}),
+            multiply(rotation_y_matrix(placement.yaw),
+                scale_matrix({impl_->character_scale, impl_->character_scale,
+                    impl_->character_scale})));
+    };
+    upload_skinning_matrices(impl_->skinning_matrices);
+    const Mat4 player_model = character_matrix(player);
+    set_matrices(player_model);
     impl_->program.set_int("u_is_skinned",
         impl_->character.is_skinned() && !impl_->skinning_matrices.empty() ? 1 : 0);
-    impl_->character_material.apply(impl_->program);
+    impl_->program.set_vec3("u_tint", impl_->character_material.tint);
+    impl_->program.set_int("u_is_ground", 0);
     impl_->character.draw();
 }
 

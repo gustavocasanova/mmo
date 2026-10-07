@@ -11,6 +11,19 @@ enum class Key {
     A,
     S,
     D,
+    Q,
+    Space,
+    F,
+    G,
+    LeftShift,
+    LeftBracket,
+    RightBracket,
+    E,
+    F1,
+    F2,
+    C,
+    L,
+    LeftControl,
     Digit0,
     Digit1,
     Digit2,
@@ -21,6 +34,11 @@ enum class Key {
     Digit7,
     Digit8,
     Digit9,
+    X,
+    Y,
+    Z,
+    R,
+    U,
     T,
 };
 
@@ -42,8 +60,10 @@ public:
     bool should_close() const;
     bool escape_pressed() const;
     bool key_pressed(Key key) const;
-    bool left_mouse_pressed() const;
     bool right_mouse_pressed() const;
+    bool left_mouse_pressed() const;
+    void cursor_position(double& x, double& y) const;
+    void window_size(int& width, int& height) const;
     double time_seconds() const;
     void set_cursor_captured(bool captured);
     void consume_mouse_input(double& delta_x, double& delta_y, double& scroll_delta);

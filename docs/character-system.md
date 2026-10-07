@@ -1,44 +1,45 @@
 # Character System
 
-## Responsabilidades
+## Responsibilities
 
 ```text
 GLB/glTF --GltfModelLoader--> assets::Model (CPU data)
                                       |
                                       v
-Character -> CharacterModel -> CharacterBody -> model meshes + skeleton
+Character -> CharacterModel -> CharacterBody -> meshes + skeleton
                     |                 |
                     |                 +-> AnimationController -> pose/skin matrices
-                    +-> EquipmentManager -> resolved bone/socket attachments
+                    +-> EquipmentManager
                                       |
                                       v
                                   Renderer
+
+InputSettings -> CharacterController -> Character transform / animation state
+                       |                         |
+                       +-> CollisionWorld <------+
+CameraController -> horizontal WASD basis and camera pose
 ```
 
-- `assets::Model` guarda meshes, nodes, materials, texture descriptors, skeleton e clips. Não depende da GPU.
-- `CharacterBody` referencia o model base e o skeleton compartilhado. O corpo é a fonte da rig; equipamentos não substituem a rig.
-- `CharacterModel` compõe corpo, aparência, controller de animação e equipamentos visuais.
-- `Character` é gameplay neutro: transform e stats básicos. Não inclui OpenGL, inventário, rede ou persistência.
-- `renderer::Mesh` é recurso GPU e aceita vertices estáticos ou quatro índices/pesos de bone.
+- `assets::Model` stores meshes, nodes, materials, textures, skeleton and clips without GPU dependencies.
+- `CharacterBody` owns the base model and shared rig. `CharacterModel` composes the body, animation controller, appearance and equipment manager.
+- `Character` stores a transform and basic stats. `CharacterController` handles movement, jumping, turning and locomotion animation without depending on OpenGL.
+- `CollisionWorld` provides a flat ground plane, rectangular movement bounds, static AABB obstacles, character sliding and a swept camera-volume query. It is a small prototype collision layer, not general terrain or rigid-body physics.
+- `Renderer` draws the character and the same static boxes used by collision queries.
 
-## Skeleton e Skinning
+## Animation
 
-`animation::Bone` registra nome, índice, pai, transform local de bind e inverse-bind matrix. `Skeleton::add_bone` atribui índices; não há lista humanoide fixa. `find_bone`, `root_bone_index` e `is_valid` permitem consultar e validar nomes únicos, pais, uma raiz e ciclos. Skeleton vazio é permitido para models estáticos.
+`Animator` samples `LINEAR`/`STEP` translation, rotation and scale channels and calculates `global * inverseBind` skinning matrices. `AnimationController` binds named clips to reusable states and can also play any loaded clip by name.
 
-`Animator` avalia canais de translation, quaternion rotation e scale, monta matrizes globais e calcula `global * inverseBind`. `AnimationClip::is_valid` confere duração, bone indices, ordenação e tamanho de keyframes. O renderer aceita até 66 matrizes de skinning em um uniform buffer e quatro influências por vertex.
+The client loads all 43 animations from `Universal Animation Library[Standard]/Unreal-Godot/UAL1_Standard.glb`. Idle, walk, jog/sprint and jump clips drive movement. Jump uses `Jump_Start`, `Jump_Loop` while airborne, then `Jump_Land` on touchdown. A reversed-time `Walk_Backward_Loop` is derived from the included walk clip for reverse input; it is an additional runtime clip, not one of the pack's 43 originals.
 
-## Animation Controller
+Use `[` and `]` to preview every package animation, including clips not assigned to locomotion. Preview playback is one-shot and normal movement animation resumes when it ends. The demo does not trigger attack, hit, death, spell or interaction clips as gameplay actions.
 
-`AnimationController` associa estados (`Idle`, `Walk`, `Run`, `Jump`, `Attack`, `Hit`, `Death`) a índices de clips. Clips não existentes não são inventados: estados precisam ser associados por `bind_state`. `play_animation`, `cross_fade`, `set_state` e `update` não conhecem input, combate ou movimento.
+## Movement and controls
 
-## Aparência e câmera
+`platform::InputSettings` centralizes the default bindings: WASD move, Space jumps, and Left Shift runs. WASD vectors are built from camera yaw only, flattened to the ground and normalized, so diagonals do not gain speed. `MovementSettings` configures walk/run/backward/strafe speeds, acceleration, deceleration, air control, gravity, jump impulse, turn speed and character collision dimensions.
 
-`CharacterAppearance` reserva dados simples para variante/cor do corpo, sem editor de criação. A câmera terceira pessoa continua em `core::CameraController`, separada de Character e CharacterModel; seguir/orbitar/zoom não pertencem ao asset.
+The controller derives `Idle`, `Walking`, `Running`, `Jumping` or `Falling` from its velocity and grounded state. It smooths horizontal velocity and character yaw independently from the camera. Character translation is constrained by world bounds and slides along static box obstacles. The current floor is flat at Y=0.
 
-## Estado e limitações
+Hold the right mouse button and move to orbit; release it to free the cursor. The wheel changes the chosen zoom. The demo's two visible walls can be used to test character and camera collision.
 
-`assets::GltfModelLoader` usa fastgltf para carregar meshes, normals, pesos, joints, inverse-bind matrices e canais de animação `LINEAR`/`STEP` de GLB/glTF para `assets::Model`. O cliente carrega `personagem/characterRIGGED.glb`, envia a malha ao renderer e atualiza a paleta de skinning a cada frame. O tamanho do modelo é normalizado para 1,8 unidades de altura e a base é alinhada ao chão.
-
-O GLB runtime usa o personagem masculino de 65 joints e inclui o clip `Slow Run`, retargetado dos ossos Mixamo. Quando o personagem se move, `Walk` usa um clip `Walk` se existir; caso contrário, usa `Run`. Ao parar, volta à pose de bind se não houver clip `Idle`. Texturas ainda não são enviadas à GPU; fatores base de cor são aplicados por vértice.
-
-O script `scripts/build_male_run_animation.py` regenera o GLB runtime a partir do personagem glTF e da animação FBX. `CharacterEquipmentTest` cobre os contratos CPU de equipamento e valida também o asset/animação runtime; as peças ainda não são carregadas/renderizadas como modelos GLB.
+`CharacterControllerTest` covers camera-relative direction, diagonal normalization, movement acceleration, jumping/gravity/landing and wall blocking. `CharacterEquipmentTest` continues to validate the model, skeleton, equipment and animation-pack loading contracts.

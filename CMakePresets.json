@@ -11,6 +11,9 @@
       "displayName": "Visual Studio 2022 x64 Debug",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
+      "environment": {
+        "VCPKG_ROOT": "$env{USERPROFILE}/vcpkg"
+      },
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
@@ -21,6 +24,9 @@
       "displayName": "Visual Studio 2022 x64 Release",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
+      "environment": {
+        "VCPKG_ROOT": "$env{USERPROFILE}/vcpkg"
+      },
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
@@ -31,6 +37,9 @@
       "displayName": "Visual Studio 2026 x64 Debug",
       "generator": "Visual Studio 18 2026",
       "architecture": "x64",
+      "environment": {
+        "VCPKG_ROOT": "$env{USERPROFILE}/vcpkg"
+      },
       "binaryDir": "${sourceDir}/build-vs2026-marco001",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
@@ -41,6 +50,9 @@
       "displayName": "Visual Studio 2026 x64 Release",
       "generator": "Visual Studio 18 2026",
       "architecture": "x64",
+      "environment": {
+        "VCPKG_ROOT": "$env{USERPROFILE}/vcpkg"
+      },
       "binaryDir": "${sourceDir}/build-vs2026-marco001",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"

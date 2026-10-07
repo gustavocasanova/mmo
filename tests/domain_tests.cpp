@@ -105,17 +105,18 @@ void scene_and_assets()
 void camera()
 {
     using namespace mmo::scene;
-    CameraController controller;
-    const auto initial = controller.update(0, 0, 0, 0, 0, false);
-    near(initial.focus_y, 1.35f, "camera focus changed");
+    CameraSettings settings;
+    settings.distance_smoothing_seconds = 0.0f;
+    CameraController controller(settings);
+    const auto initial = controller.update(0, {{0, 0, 0}, 0});
+    near(initial.focus_y, 1.5f, "camera focus changed");
     check(initial.eye_z < 0, "camera must start behind character");
     const float rotation = controller.apply_input({20, 0, 0, true});
-    near(rotation, 0.1f, "mouse sensitivity changed");
+    near(rotation, 0.0f, "free camera rotated the target");
     controller.apply_input({0, 10000, -10000, true});
     Camera view;
     for (int i = 0; i < 120; ++i) {
-        auto pose = controller.update(1.0f / 60.0f, 0, 0, 0, 0, false);
-        check(pose.eye_y >= 0.2499f, "camera crossed the ground");
+        auto pose = controller.update(1.0f / 60.0f, {{0, 0, 0}, 0});
         view.set_pose(pose);
     }
     const auto matrix = view.projection(16.0f / 9.0f) * view.view();

@@ -1,26 +1,23 @@
 #include "renderer/shader.hpp"
-#include "assets/mesh_data.hpp"
-#include <cmath>
-#include "renderer/opengl/builtin_shaders.hpp"
+
 #include <glad/gl.h>
 #include <glm/gtc/type_ptr.hpp>
+
+#include <cstddef>
+#include <limits>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 
 namespace mmo::renderer {
-using math::Mat4;
-using math::Vec3;
 namespace {
-using namespace opengl;
-std::string shader_info_log(unsigned int shader)
+
+std::string shader_info_log(GLuint shader)
 {
-    int length = 0;
+    GLint length = 0;
     glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &length);
     if (length <= 1) {
         return {};
     }
-
     std::string log(static_cast<std::size_t>(length), '\0');
     glGetShaderInfoLog(shader, length, nullptr, log.data());
     if (!log.empty() && log.back() == '\0') {
@@ -29,14 +26,13 @@ std::string shader_info_log(unsigned int shader)
     return log;
 }
 
-std::string program_info_log(unsigned int program)
+std::string program_info_log(GLuint program)
 {
-    int length = 0;
+    GLint length = 0;
     glGetProgramiv(program, GL_INFO_LOG_LENGTH, &length);
     if (length <= 1) {
         return {};
     }
-
     std::string log(static_cast<std::size_t>(length), '\0');
     glGetProgramInfoLog(program, length, nullptr, log.data());
     if (!log.empty() && log.back() == '\0') {
@@ -45,19 +41,18 @@ std::string program_info_log(unsigned int program)
     return log;
 }
 
-unsigned int compile_shader(unsigned int type, std::string_view source)
+GLuint compile_shader(GLenum type, std::string_view source)
 {
-    const unsigned int shader = glCreateShader(type);
+    const GLuint shader = glCreateShader(type);
     if (shader == 0) {
         throw std::runtime_error("glCreateShader returned 0");
     }
-
     const char* source_data = source.data();
-    const int source_length = static_cast<int>(source.size());
+    const GLint source_length = static_cast<GLint>(source.size());
     glShaderSource(shader, 1, &source_data, &source_length);
     glCompileShader(shader);
 
-    int compiled = GL_FALSE;
+    GLint compiled = GL_FALSE;
     glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
     if (compiled != GL_TRUE) {
         const std::string log = shader_info_log(shader);
@@ -67,36 +62,32 @@ unsigned int compile_shader(unsigned int type, std::string_view source)
     return shader;
 }
 
-unsigned int create_program(unsigned int vertex_shader, unsigned int fragment_shader)
-{
-    const unsigned int program = glCreateProgram();
-    if (program == 0) {
-        throw std::runtime_error("glCreateProgram returned 0");
-    }
-
-    glAttachShader(program, vertex_shader);
-    glAttachShader(program, fragment_shader);
-    glLinkProgram(program);
-
-    int linked = GL_FALSE;
-    glGetProgramiv(program, GL_LINK_STATUS, &linked);
-    if (linked != GL_TRUE) {
-        const std::string log = program_info_log(program);
-        glDeleteProgram(program);
-        throw std::runtime_error("program link failed:\n" + log);
-    }
-    return program;
 }
 
-}
-Shader::Shader()
+Shader::Shader(std::string_view vertex_source, std::string_view fragment_source)
 {
-    const unsigned int vertex_shader = compile_shader(GL_VERTEX_SHADER, kVertexShaderSource);
-    unsigned int fragment_shader = 0;
+    const GLuint vertex_shader = compile_shader(GL_VERTEX_SHADER, vertex_source);
+    GLuint fragment_shader = 0;
     try {
-        fragment_shader = compile_shader(GL_FRAGMENT_SHADER, kFragmentShaderSource);
-        id_ = create_program(vertex_shader, fragment_shader);
+        fragment_shader = compile_shader(GL_FRAGMENT_SHADER, fragment_source);
+        id_ = glCreateProgram();
+        if (id_ == 0) {
+            throw std::runtime_error("glCreateProgram returned 0");
+        }
+        glAttachShader(id_, vertex_shader);
+        glAttachShader(id_, fragment_shader);
+        glLinkProgram(id_);
+
+        GLint linked = GL_FALSE;
+        glGetProgramiv(id_, GL_LINK_STATUS, &linked);
+        if (linked != GL_TRUE) {
+            throw std::runtime_error("shader program link failed:\n" + program_info_log(id_));
+        }
     } catch (...) {
+        if (id_ != 0) {
+            glDeleteProgram(id_);
+            id_ = 0;
+        }
         glDeleteShader(vertex_shader);
         if (fragment_shader != 0) {
             glDeleteShader(fragment_shader);
@@ -105,15 +96,6 @@ Shader::Shader()
     }
     glDeleteShader(vertex_shader);
     glDeleteShader(fragment_shader);
-    projection_location_ = glGetUniformLocation(id_, "u_projection");
-    view_location_ = glGetUniformLocation(id_, "u_view");
-    model_location_ = glGetUniformLocation(id_, "u_model");
-    tint_location_ = glGetUniformLocation(id_, "u_tint");
-    pattern_location_ = glGetUniformLocation(id_, "u_surface_pattern");
-    normal_locations_ = {glGetUniformLocation(id_, "u_normal_column0"),
-        glGetUniformLocation(id_, "u_normal_column1"), glGetUniformLocation(id_, "u_normal_column2")};
-    skinning_location_ = glGetUniformLocation(id_, "u_bone_matrices[0]");
-    skinned_location_ = glGetUniformLocation(id_, "u_is_skinned");
 }
 
 Shader::~Shader()
@@ -128,39 +110,44 @@ void Shader::bind() const
     glUseProgram(id_);
 }
 
-void Shader::set_matrices(const Mat4& projection, const Mat4& view, const Mat4& model) const
+void Shader::bind_uniform_block(const char* name, unsigned int binding) const
 {
-    glUniformMatrix4fv(projection_location_, 1, GL_FALSE, glm::value_ptr(projection));
-    glUniformMatrix4fv(view_location_, 1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(model_location_, 1, GL_FALSE, glm::value_ptr(model));
-    const glm::mat3 linear(model);
-    const glm::mat3 normal = std::abs(glm::determinant(linear)) <= 0.000001f
-        ? glm::mat3(1.0f) : glm::transpose(glm::inverse(linear));
-    for (std::size_t i = 0; i < normal_locations_.size(); ++i) {
-        const auto column = normal[static_cast<int>(i)];
-        glUniform3f(normal_locations_[i], column.x, column.y, column.z);
+    const GLuint block = glGetUniformBlockIndex(id_, name);
+    if (block == GL_INVALID_INDEX) {
+        throw std::runtime_error(std::string("shader uniform block not found: ") + name);
+    }
+    glUniformBlockBinding(id_, block, binding);
+}
+
+int Shader::uniform_location(const char* name) const
+{
+    return glGetUniformLocation(id_, name);
+}
+
+void Shader::set_mat4(const char* name, const glm::mat4& value) const
+{
+    glUniformMatrix4fv(uniform_location(name), 1, GL_FALSE, glm::value_ptr(value));
+}
+
+void Shader::set_mat4_array(const char* name, std::span<const glm::mat4> values) const
+{
+    if (values.size() > static_cast<std::size_t>(std::numeric_limits<GLsizei>::max())) {
+        throw std::length_error("shader matrix array is too large");
+    }
+    if (!values.empty()) {
+        glUniformMatrix4fv(uniform_location(name), static_cast<GLsizei>(values.size()),
+            GL_FALSE, glm::value_ptr(values.front()));
     }
 }
 
-void Shader::set_tint(Vec3 tint) const
+void Shader::set_vec3(const char* name, const glm::vec3& value) const
 {
-    glUniform3f(tint_location_, tint.x, tint.y, tint.z);
+    glUniform3f(uniform_location(name), value.x, value.y, value.z);
 }
 
-void Shader::set_pattern(scene::SurfacePattern pattern) const
+void Shader::set_int(const char* name, int value) const
 {
-    glUniform1i(pattern_location_, pattern == scene::SurfacePattern::checker_grid ? 1 : 0);
+    glUniform1i(uniform_location(name), value);
 }
 
-void Shader::set_skinning(std::span<const math::Mat4> matrices) const
-{
-    if (matrices.size() > assets::kMaxSkinningBones) {
-        throw std::length_error("OpenGL skinning palette exceeds the 48-bone limit");
-    }
-    glUniform1i(skinned_location_, matrices.empty() ? 0 : 1);
-    if (!matrices.empty()) {
-        glUniformMatrix4fv(skinning_location_, static_cast<GLsizei>(matrices.size()),
-            GL_FALSE, glm::value_ptr(matrices.front()));
-    }
-}
 }

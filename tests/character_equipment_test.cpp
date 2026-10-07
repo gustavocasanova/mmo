@@ -264,6 +264,74 @@ void test_male_character_run_glb()
     require(pose_changed, "run clip should change the rendered skinning pose");
 }
 
+void test_universal_animation_pack()
+{
+    mmo::assets::GltfModelLoader loader;
+    const mmo::assets::Model model = loader.load(
+        "Universal Animation Library[Standard]/Unreal-Godot/UAL1_Standard.glb");
+    std::string validation_reason;
+    require(model.validate(&validation_reason), validation_reason.c_str());
+
+    const auto has_clip = [&model](const std::string& name) {
+        for (const mmo::animation::AnimationClip& clip : model.animations) {
+            if (clip.name == name) {
+                return true;
+            }
+        }
+        return false;
+    };
+    float jump_duration = 0.0f;
+    for (const char* name : {"Idle_Loop", "Walk_Loop", "Jog_Fwd_Loop",
+             "Sprint_Loop", "Jump_Start", "Jump_Loop", "Jump_Land",
+             "Sword_Attack", "Hit_Chest", "Death01"}) {
+        require(has_clip(name), "Universal Animation Library is missing a required action clip");
+    }
+    for (const mmo::animation::AnimationClip& clip : model.animations) {
+        if (clip.name == "Jump_Loop") {
+            jump_duration = clip.duration;
+            break;
+        }
+    }
+    require(jump_duration > 0.0f, "Jump_Loop should have a positive duration");
+
+    mmo::animation::AnimationController controller(model.skeleton, model.animations);
+    const auto bind_named_state = [&model, &controller](
+        mmo::animation::AnimationState state, const std::string& name) {
+        for (std::size_t index = 0; index < model.animations.size(); ++index) {
+            if (model.animations[index].name == name) {
+                return controller.bind_state(state, index);
+            }
+        }
+        return false;
+    };
+    require(bind_named_state(mmo::animation::AnimationState::Idle, "Idle_Loop"),
+        "Idle_Loop should bind to the Idle state");
+    require(bind_named_state(mmo::animation::AnimationState::Walk, "Walk_Loop"),
+        "Walk_Loop should bind to the Walk state");
+    require(bind_named_state(mmo::animation::AnimationState::Run, "Jog_Fwd_Loop"),
+        "Jog_Fwd_Loop should bind to the Run state");
+    require(bind_named_state(mmo::animation::AnimationState::Jump, "Jump_Loop"),
+        "Jump_Loop should bind to the Jump state");
+    require(controller.set_state(mmo::animation::AnimationState::Jump, 0.0f),
+        "Jump state should start");
+    const auto initial_pose = controller.pose().skin_matrices;
+    controller.update(jump_duration * 0.5f);
+    bool pose_changed = false;
+    for (std::size_t bone = 0; bone < initial_pose.size(); ++bone) {
+        for (std::size_t component = 0; component < initial_pose[bone].size(); ++component) {
+            if (std::abs(initial_pose[bone][component] -
+                    controller.pose().skin_matrices[bone][component]) > 0.001f) {
+                pose_changed = true;
+                break;
+            }
+        }
+        if (pose_changed) {
+            break;
+        }
+    }
+    require(pose_changed, "Universal jump clip should change the rendered skinning pose");
+}
+
 }
 
 int main()
@@ -272,6 +340,7 @@ int main()
         test_skeleton_animation_and_model();
         test_character_equipment();
         test_male_character_run_glb();
+        test_universal_animation_pack();
         std::cout << "CharacterEquipmentTest passed\n";
         return 0;
     } catch (const std::exception& error) {

@@ -1,23 +1,39 @@
 #pragma once
+
 #include "scene/camera.hpp"
+
+#include <glm/vec3.hpp>
+
+namespace mmo::game::world {
+class CollisionWorld;
+}
 
 namespace mmo::scene {
 
+struct CameraTarget {
+    math::Vec3 position{0.0f};
+    float yaw = 0.0f;
+};
+
 struct CameraSettings {
+    float initial_distance = 6.0f;
+    float minimum_distance = 2.0f;
+    float maximum_distance = 15.0f;
+    math::Vec3 target_offset{0.0f, 1.5f, 0.0f};
     float horizontal_sensitivity = 0.005f;
     float vertical_sensitivity = 0.005f;
-    float initial_distance = 11.2f;
-    float minimum_distance = 3.0f;
-    float maximum_distance = 20.0f;
-    float zoom_speed = 1.2f;
-    float focus_height = 1.35f;
-    float minimum_elevation = -0.15f;
-    float maximum_elevation = 1.25f;
-    float smoothing = 16.0f;
-    float collision_approach_speed = 30.0f;
-    float collision_return_speed = 5.0f;
-    float ground_clearance = 0.25f;
+    float minimum_pitch = -1.3962634f;
+    float maximum_pitch = 1.3962634f;
+    float zoom_speed = 5.0f;
+    float distance_smoothing_seconds = 0.12f;
+    float rotation_smoothing_seconds = 0.06f;
+    float collision_radius = 0.2f;
+    float minimum_collision_distance = 0.65f;
+    float field_of_view = 1.04719755f;
+    float near_plane = 0.05f;
+    float far_plane = 1000.0f;
     bool invert_vertical = false;
+    bool rotate_target_with_camera = false;
 };
 
 struct CameraInput {
@@ -32,27 +48,28 @@ public:
     explicit CameraController(CameraSettings settings = {});
 
     float apply_input(const CameraInput& input);
-    CameraPose update(
+    void reset_behind_target(float target_yaw);
+    [[nodiscard]] CameraPose update(
         float delta_seconds,
-        float player_x,
-        float player_y,
-        float player_z,
-        float player_yaw,
-        bool align_behind_character);
+        const CameraTarget& target,
+        const game::world::CollisionWorld* collision_world = nullptr);
+    [[nodiscard]] const CameraSettings& settings() const;
+    [[nodiscard]] float yaw() const;
+    [[nodiscard]] float pitch() const;
+    [[nodiscard]] float desired_distance() const;
+    [[nodiscard]] float current_distance() const;
+    [[nodiscard]] float actual_distance() const;
 
 private:
     CameraSettings settings_;
-    float desired_camera_yaw_ = 3.14159265f;
-    float elevation_ = 0.402f;
-    float target_distance_ = 11.2f;
-    float focus_x_ = 0.0f;
-    float focus_y_ = 0.0f;
-    float focus_z_ = 0.0f;
-    float camera_yaw_ = 0.0f;
-    float camera_elevation_ = 0.0f;
-    float camera_distance_ = 0.0f;
+    float yaw_ = 3.14159265f;
+    float pitch_ = 0.34906585f;
+    float current_yaw_ = 3.14159265f;
+    float current_pitch_ = 0.34906585f;
+    float desired_distance_ = 6.0f;
+    float current_distance_ = 6.0f;
+    math::Vec3 current_focus_{0.0f};
     bool initialized_ = false;
-    bool was_ground_colliding_ = false;
 };
 
 }

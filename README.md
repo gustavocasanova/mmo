@@ -2,7 +2,7 @@
 
 Engine 3D própria em C++20 para um MMORPG persistente de fantasia nórdica estilizada, com Valheim como referência visual de alto nível e assets/identidade originais. Sem Unity, Unreal ou Godot. O renderer é nosso; o primeiro backend usa OpenGL 3.3 Core.
 
-Current step: **Marco 003 — personagem autoral em terceira pessoa**. O cliente carrega `personagem/characterRIGGED.glb` por fastgltf e aplica skinning da rig. A animação `Slow Run` retargetada toca durante o movimento; ainda não há rede nem simulação autoritativa.
+Current step: **Marco 003 — personagem autoral em terceira pessoa**. O cliente carrega o personagem e os clips de animação do pack Universal Animation Library por fastgltf e aplica skinning da rig. WASD movimenta o personagem (A esquerda, D direita) e Espaço executa o pulo; ainda não há rede nem simulação autoritativa.
 
 A arquitetura e as dependências planejadas estão em [docs/architecture.md](docs/architecture.md). A regra central é manter a simulação do servidor independente do cliente e da GPU.
 
@@ -107,17 +107,19 @@ Close with the window chrome or **Escape**. The process should print `[app] shut
 
 ## Expected picture
 
-Uma cena em terceira pessoa com terreno verde quadriculado e o modelo rigged local em `personagem/characterRIGGED.glb`. WASD movimenta e toca a animação de corrida; scroll aproxima/afasta e arrastar com o botão direito orbita. A câmera respeita o chão, mas ainda não evita paredes ou árvores. A pose parada volta à bind pose até ser adicionado um clip `Idle`; texturas ainda não são renderizadas.
+Uma cena em terceira pessoa com terreno verde quadriculado, o modelo rigged do pack Universal Animation Library e duas paredes de teste. WASD movimenta relativo à câmera; segure Shift para correr; Espaço pula; segure o botão direito e arraste para orbitar; scroll aproxima/afasta. As teclas `[` e `]` reproduzem, uma por vez, todos os clipes carregados. A câmera respeita o chão e recua ao encontrar as paredes; texturas ainda não são renderizadas.
 
-The console prints OpenGL version, vendor, renderer and GLSL version, loaded mesh/bone/clip counts, and controls. It explains when no animation or idle clip is present.
+The console prints OpenGL version, vendor, renderer and GLSL version, loaded mesh/bone/clip counts, and controls.
 
 ## Marco 003 acceptance
 
 - [ ] CMake configure succeeds with MSVC x64 and the vcpkg toolchain
 - [ ] `mmo_client` links without errors
-- [ ] A window titled `MMO Engine - Character Preview` appears
+- [ ] A window titled `MMO Engine - Movement Prototype` appears
 - [ ] A 3D ground plane and a controllable GLB character are visible
 - [ ] WASD moves the character
+- [ ] Character movement follows camera yaw and normalizes diagonals
+- [ ] The visible test walls block the character and camera
 - [ ] Embedded `LINEAR`/`STEP` animation clips play when movement is active
 - [ ] Resize still fills the framebuffer (viewport callback)
 - [ ] Escape or close destroys the context and returns 0
