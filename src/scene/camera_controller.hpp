@@ -4,6 +4,8 @@
 
 #include <glm/vec3.hpp>
 
+#include <optional>
+
 namespace mmo::game::world {
 class CollisionWorld;
 }
@@ -27,6 +29,7 @@ struct CameraSettings {
     float zoom_speed = 5.0f;
     float distance_smoothing_seconds = 0.12f;
     float rotation_smoothing_seconds = 0.06f;
+    float follow_rotation_smoothing_seconds = 0.45f;
     float collision_radius = 0.2f;
     float minimum_collision_distance = 0.65f;
     float field_of_view = 1.04719755f;
@@ -49,6 +52,7 @@ public:
 
     float apply_input(const CameraInput& input);
     void reset_behind_target(float target_yaw);
+    void set_follow_target_yaw(std::optional<float> target_yaw);
     [[nodiscard]] CameraPose update(
         float delta_seconds,
         const CameraTarget& target,
@@ -69,6 +73,7 @@ private:
     float desired_distance_ = 6.0f;
     float current_distance_ = 6.0f;
     math::Vec3 current_focus_{0.0f};
+    std::optional<float> follow_target_yaw_;
     bool initialized_ = false;
 };
 

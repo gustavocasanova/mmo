@@ -311,7 +311,8 @@ void Animator::play(std::size_t clip_index, bool loop)
     rebuild_pose();
 }
 
-bool Animator::cross_fade(std::size_t clip_index, float duration_seconds, bool loop)
+bool Animator::cross_fade(
+    std::size_t clip_index, float duration_seconds, bool loop, bool keep_phase)
 {
     if (clip_index >= clips_.size()) {
         return false;
@@ -325,8 +326,12 @@ bool Animator::cross_fade(std::size_t clip_index, float duration_seconds, bool l
     fade_source_time_seconds_ = time_seconds_;
     fade_elapsed_seconds_ = 0.0f;
     fade_duration_seconds_ = duration_seconds;
+    const float source_duration = clips_[fade_source_clip_].duration;
+    const float target_duration = clips_[clip_index].duration;
     active_clip_ = clip_index;
-    time_seconds_ = 0.0f;
+    time_seconds_ = keep_phase && source_duration > 0.0f
+        ? fade_source_time_seconds_ / source_duration * target_duration
+        : 0.0f;
     loop_ = loop;
     playing_ = true;
     rebuild_pose();
@@ -445,6 +450,11 @@ void Animator::rebuild_pose()
     }
 
     resolve_pose(pose_);
+}
+
+const Skeleton& Animator::skeleton() const
+{
+    return skeleton_;
 }
 
 const AnimationClip& Animator::clip(std::size_t clip_index) const

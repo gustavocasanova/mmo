@@ -1,4 +1,4 @@
-# MMO Engine
+﻿# MMO Engine
 
 Engine 3D própria em C++20 para um MMORPG persistente de fantasia nórdica estilizada, com Valheim como referência visual de alto nível e assets/identidade originais. Sem Unity, Unreal ou Godot. O renderer é nosso; o primeiro backend usa OpenGL 3.3 Core.
 
@@ -107,7 +107,7 @@ Close with the window chrome or **Escape**. The process should print `[app] shut
 
 ## Expected picture
 
-Uma cena em terceira pessoa com terreno verde quadriculado, o modelo rigged do pack Universal Animation Library e duas paredes de teste. WASD movimenta relativo à câmera; segure Shift para correr; Espaço pula; segure o botão direito e arraste para orbitar; scroll aproxima/afasta. As teclas `[` e `]` reproduzem, uma por vez, todos os clipes carregados. A câmera respeita o chão e recua ao encontrar as paredes; texturas ainda não são renderizadas.
+Uma cena em terceira pessoa com terreno verde quadriculado, o modelo rigged do pack Universal Animation Library e duas paredes de teste. WASD movimenta relativo à câmera; o personagem sempre corre (sem Shift; o pack não tem clipes laterais, então A/D reutilizam a corrida); Espaço pula; segure o botão direito e arraste para orbitar; scroll aproxima/afasta. As teclas `[` e `]` reproduzem, uma por vez, todos os clipes carregados. A câmera respeita o chão e recua ao encontrar as paredes; texturas ainda não são renderizadas.
 
 The console prints OpenGL version, vendor, renderer and GLSL version, loaded mesh/bone/clip counts, and controls.
 

@@ -44,6 +44,37 @@ void test_orbit_and_target_independence()
     check(reset.eye_x < 0.0f, "camera did not reset behind target yaw");
 }
 
+void test_camera_returns_behind_character_smoothly()
+{
+    using namespace mmo::scene;
+    CameraSettings settings;
+    settings.follow_rotation_smoothing_seconds = 0.5f;
+    CameraController camera(settings);
+    const CameraTarget target{{0.0f, 0.0f, 0.0f}, 0.0f};
+    (void)camera.update(0.0f, target);
+    camera.set_follow_target_yaw(std::nullopt);
+    (void)camera.apply_input({180.0, 0.0, 0.0, true});
+    (void)camera.update(1.0f, target);
+    const float orbit_yaw = camera.yaw();
+    camera.set_follow_target_yaw(target.yaw + 3.14159265f);
+    (void)camera.update(0.1f, target);
+    const float first_return_yaw = camera.yaw();
+    check(std::abs(std::remainder(first_return_yaw - orbit_yaw,
+              2.0f * 3.14159265f)) > 0.01f,
+        "camera did not start returning after orbit input ended");
+    check(std::abs(std::remainder(first_return_yaw - (target.yaw + 3.14159265f),
+              2.0f * 3.14159265f)) <
+        std::abs(std::remainder(orbit_yaw - (target.yaw + 3.14159265f),
+              2.0f * 3.14159265f)),
+        "camera return was not gradual");
+    for (int frame = 0; frame < 100; ++frame) {
+        (void)camera.update(0.05f, target);
+    }
+    check(std::abs(std::remainder(camera.yaw() - (target.yaw + 3.14159265f),
+              2.0f * 3.14159265f)) < 0.01f,
+        "camera did not return behind the character");
+}
+
 void test_pitch_zoom_and_follow()
 {
     using namespace mmo::scene;
@@ -131,6 +162,7 @@ int main()
 {
     try {
         test_orbit_and_target_independence();
+        test_camera_returns_behind_character_smoothly();
         test_pitch_zoom_and_follow();
         test_projection_validation();
         test_camera_obstacle_collision();

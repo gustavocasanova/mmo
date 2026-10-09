@@ -231,6 +231,19 @@ const std::vector<SelectableObject>& SelectionManager::objects() const
     return objects_;
 }
 
+void SelectionManager::replace_objects(
+    std::vector<SelectableObject> objects,
+    std::optional<SelectionId> selected)
+{
+    SelectionManager validated{objects};
+    objects_ = std::move(objects);
+    next_id_ = validated.next_id_;
+    selected_.reset();
+    if (selected) {
+        (void)select(*selected);
+    }
+}
+
 SelectionId SelectionManager::add_object(SelectableObject object)
 {
     if (!is_finite(object.local_bounds.minimum) ||

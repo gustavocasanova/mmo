@@ -31,6 +31,7 @@ CameraController::CameraController(CameraSettings settings)
         !std::isfinite(settings_.zoom_speed) ||
         !std::isfinite(settings_.distance_smoothing_seconds) ||
         !std::isfinite(settings_.rotation_smoothing_seconds) ||
+        !std::isfinite(settings_.follow_rotation_smoothing_seconds) ||
         !std::isfinite(settings_.collision_radius) ||
         !std::isfinite(settings_.minimum_collision_distance) ||
         !std::isfinite(settings_.target_offset.x) ||
@@ -56,6 +57,8 @@ CameraController::CameraController(CameraSettings settings)
         settings_.distance_smoothing_seconds, 0.0f);
     settings_.rotation_smoothing_seconds = std::max(
         settings_.rotation_smoothing_seconds, 0.0f);
+    settings_.follow_rotation_smoothing_seconds = std::max(
+        settings_.follow_rotation_smoothing_seconds, 0.0f);
     settings_.collision_radius = std::max(settings_.collision_radius, 0.0f);
     settings_.minimum_collision_distance = std::clamp(
         settings_.minimum_collision_distance, 0.1f, settings_.minimum_distance);
@@ -96,6 +99,14 @@ void CameraController::reset_behind_target(float target_yaw)
 {
     yaw_ = wrap_angle(target_yaw + kPi);
     current_yaw_ = yaw_;
+    follow_target_yaw_.reset();
+}
+
+void CameraController::set_follow_target_yaw(std::optional<float> target_yaw)
+{
+    follow_target_yaw_ = target_yaw
+        ? std::optional<float>{wrap_angle(*target_yaw)}
+        : std::nullopt;
 }
 
 CameraPose CameraController::update(
@@ -104,6 +115,13 @@ CameraPose CameraController::update(
     const game::world::CollisionWorld* collision_world)
 {
     const float elapsed = std::max(delta_seconds, 0.0f);
+    if (follow_target_yaw_) {
+        const float follow_factor = settings_.follow_rotation_smoothing_seconds <= 0.0f
+            ? 1.0f
+            : 1.0f - std::exp(-elapsed / settings_.follow_rotation_smoothing_seconds);
+        yaw_ = wrap_angle(yaw_ +
+            wrap_angle(*follow_target_yaw_ - yaw_) * follow_factor);
+    }
     const math::Vec3 desired_focus = target.position + settings_.target_offset;
     if (!initialized_) {
         current_focus_ = desired_focus;

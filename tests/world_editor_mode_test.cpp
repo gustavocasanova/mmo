@@ -1,8 +1,11 @@
 #include "assets/static_model_geometry.hpp"
 #include "editor/asset_database.hpp"
+#include "editor/editor_history.hpp"
 #include "editor/world_editor.hpp"
 #include "editor/editor_camera.hpp"
 #include "editor/selection.hpp"
+#include "editor/world_document.hpp"
+#include "game/world/terrain.hpp"
 
 #include <chrono>
 #include <cmath>
@@ -345,6 +348,92 @@ void test_selection_can_add_asset_instances()
         "new asset instance did not preserve its model reference and placement");
 }
 
+void test_world_document_round_trip()
+{
+    using namespace mmo::editor;
+    using namespace mmo::game::world;
+    const auto path = std::filesystem::temp_directory_path() /
+        "mmo-world-document-test.mmoworld";
+    const auto region_path = std::filesystem::path{path.string() + ".regions"};
+    try {
+        Terrain source_terrain;
+        check(source_terrain.apply_brush(
+                {2.0f, -3.0f}, 5.0f, 2.0f, 0.75f, TerrainBrush::raise),
+            "world document test setup did not change terrain");
+        check(source_terrain.paint_material(
+                {2.0f, -3.0f}, 3.0f, 2.0f, 1.0f,
+                TerrainMaterial::sand),
+            "world document test setup did not paint material");
+        SelectionManager source_selection({});
+        (void)source_selection.add_object({
+            12, {{-1.0f, -2.0f, -3.0f}, {1.0f, 2.0f, 3.0f}},
+            {8.0f, 4.0f, -2.0f}, {10.0f, 20.0f, 30.0f},
+            {1.5f, 2.0f, 0.75f}, "Cart With Space",
+            "assets/vehicles/cart.glb"});
+        WorldDocument::save(path, source_terrain, source_selection.objects());
+        WorldDocumentData loaded = WorldDocument::load(path);
+        check(std::abs(loaded.terrain.height_at({2.0f, -3.0f}) -
+                source_terrain.height_at({2.0f, -3.0f})) < 0.00001f,
+            "world document did not preserve the terrain heightmap");
+        check(loaded.terrain.material_weights_at({2.0f, -3.0f}).w > 0.99f,
+            "world document did not preserve terrain material weights");
+        check(loaded.objects.size() == 1 &&
+                loaded.objects.front().name == "Cart With Space" &&
+                loaded.objects.front().asset_path == "assets/vehicles/cart.glb" &&
+                glm::length(loaded.objects.front().position -
+                    glm::vec3{8.0f, 4.0f, -2.0f}) < 0.0001f &&
+                glm::length(loaded.objects.front().rotation_degrees -
+                    glm::vec3{10.0f, 20.0f, 30.0f}) < 0.0001f &&
+                glm::length(loaded.objects.front().scale -
+                    glm::vec3{1.5f, 2.0f, 0.75f}) < 0.0001f,
+            "world document did not preserve object data and transforms");
+        check(loaded.terrain.resident_region_count() <=
+                loaded.terrain.region_storage_limit() &&
+                std::filesystem::exists(region_path),
+            "loaded world did not establish bounded regional terrain storage");
+    } catch (...) {
+        std::error_code ignored;
+        std::filesystem::remove(path, ignored);
+        std::filesystem::remove_all(region_path, ignored);
+        throw;
+    }
+    std::filesystem::remove(path);
+    std::error_code ignored;
+    std::filesystem::remove_all(region_path, ignored);
+}
+
+void test_editor_history_undoes_and_redoes_world_state()
+{
+    using namespace mmo::editor;
+    using namespace mmo::game::world;
+    Terrain terrain;
+    SelectionManager selection({
+        {3, {{-1.0f, -1.0f, -1.0f}, {1.0f, 1.0f, 1.0f}}},
+    });
+    (void)selection.select(3);
+    const EditorSnapshot before = capture_snapshot(terrain, selection);
+    check(terrain.apply_brush({0.0f, 0.0f}, 3.0f, 2.0f, 1.0f, TerrainBrush::raise),
+        "history test terrain setup did not modify terrain");
+    const EditorSnapshot after_brush = capture_snapshot(terrain, selection);
+    check(selection.set_transform(
+            3, {4.0f, 2.0f, 1.0f}, {}, glm::vec3{1.0f}),
+        "history test object setup did not modify its transform");
+    EditorHistory history;
+    history.record(before, after_brush, "test");
+    history.record(after_brush, capture_snapshot(terrain, selection), "test");
+    check(history.undo_count() == 1,
+        "consecutive changes in one interaction were not coalesced");
+
+    check(history.undo(terrain, selection) &&
+            terrain.height_at({0.0f, 0.0f}) == 0.0f &&
+            selection.object_for(3)->position == glm::vec3{0.0f},
+        "undo did not restore the terrain and object state");
+    check(history.redo(terrain, selection) &&
+            terrain.height_at({0.0f, 0.0f}) > 1.9f &&
+            selection.object_for(3)->position == glm::vec3{4.0f, 2.0f, 1.0f},
+        "redo did not reapply the terrain and object state");
+}
+
 }
 
 int main()
@@ -359,6 +448,8 @@ int main()
         test_asset_database_indexes_models_and_round_trips_prefabs();
         test_static_model_geometry_applies_node_hierarchy_and_centers_bounds();
         test_selection_can_add_asset_instances();
+        test_world_document_round_trip();
+        test_editor_history_undoes_and_redoes_world_state();
         std::cout << "WorldEditorModeTest passed\n";
         return 0;
     } catch (const std::exception& error) {

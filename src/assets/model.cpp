@@ -116,6 +116,25 @@ bool Model::validate(std::string* reason) const
     return true;
 }
 
+void append_animations(Model& target, const Model& source)
+{
+    if (target.skeleton.bones.size() != source.skeleton.bones.size()) {
+        throw std::invalid_argument("animation source skeleton does not match the target skeleton");
+    }
+    for (std::size_t index = 0; index < target.skeleton.bones.size(); ++index) {
+        if (target.skeleton.bones[index].name != source.skeleton.bones[index].name) {
+            throw std::invalid_argument("animation source skeleton does not match the target skeleton");
+        }
+    }
+    for (const animation::AnimationClip& clip : source.animations) {
+        const bool exists = std::any_of(target.animations.begin(), target.animations.end(),
+            [&clip](const animation::AnimationClip& other) { return other.name == clip.name; });
+        if (!exists) {
+            target.animations.push_back(clip);
+        }
+    }
+}
+
 AssetSystem::AssetSystem(const ModelLoader& model_loader)
     : model_loader_(model_loader)
 {

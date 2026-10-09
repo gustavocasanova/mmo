@@ -7,6 +7,37 @@
 namespace mmo::animation {
 namespace {
 
+Quaternion multiply(const Quaternion& a, const Quaternion& b)
+{
+    return {
+        a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+        a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+        a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+        a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+    };
+}
+
+Quaternion conjugate(const Quaternion& q)
+{
+    return {-q.x, -q.y, -q.z, q.w};
+}
+
+// Model-space rotation of `bone`'s parent chain (excluding the bone itself).
+Quaternion parent_rotation(const Skeleton& skeleton,
+    const std::vector<BoneTransform>& locals, std::size_t bone)
+{
+    std::vector<std::size_t> chain;
+    for (std::size_t current = skeleton.bones[bone].parent_index; current != kNoBone;
+         current = skeleton.bones[current].parent_index) {
+        chain.push_back(current);
+    }
+    Quaternion result{};
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+        result = multiply(result, locals[*it].rotation);
+    }
+    return result;
+}
+
 float lerp(float a, float b, float t)
 {
     return a + (b - a) * t;
@@ -194,11 +225,24 @@ void AnimationMixer::mix(const Animator& animator, const Pose& lower, Pose& outp
         std::vector<BoneTransform> upper;
         animator.sample_clip_pose(clip_index_, clip_time, upper);
         const std::size_t count = std::min(upper.size(), output.local_transforms.size());
+        const Skeleton& skeleton = animator.skeleton();
+        // The lower clip may twist the hips (strafing) differently from the action clip. The
+        // masked branch root keeps the action's model-space orientation so the torso and arms
+        // are not dragged along by the lower-body motion.
+        const std::vector<BoneTransform> lower_locals = output.local_transforms;
         for (std::size_t bone = 0; bone < count; ++bone) {
             const float weight = mask_.weight(bone) * layer_weight;
             if (weight > 0.0f) {
+                BoneTransform target = upper[bone];
+                const std::size_t parent = skeleton.bones[bone].parent_index;
+                if (parent != kNoBone && mask_.weight(parent) <= 0.0f) {
+                    const Quaternion corrected = multiply(
+                        conjugate(parent_rotation(skeleton, lower_locals, bone)),
+                        multiply(parent_rotation(skeleton, upper, bone), upper[bone].rotation));
+                    target.rotation = corrected;
+                }
                 output.local_transforms[bone] =
-                    blend(output.local_transforms[bone], upper[bone], weight);
+                    blend(output.local_transforms[bone], target, weight);
             }
         }
     }

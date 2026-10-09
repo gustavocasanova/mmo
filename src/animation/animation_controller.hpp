@@ -26,7 +26,8 @@ public:
 
     [[nodiscard]] bool bind_state(AnimationState state, std::size_t clip_index, bool loop = true);
     [[nodiscard]] bool play_animation(std::string_view name, bool loop = true);
-    [[nodiscard]] bool cross_fade(std::string_view name, float duration_seconds, bool loop = true);
+    [[nodiscard]] bool cross_fade(std::string_view name, float duration_seconds, bool loop = true,
+        bool keep_phase = false);
     [[nodiscard]] bool set_state(AnimationState state, float fade_seconds = 0.15f);
     void update(float delta_seconds);
     void stop();

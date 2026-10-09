@@ -65,7 +65,10 @@ public:
     void set_enemies(std::span<const EnemyRenderInstance> enemies);
     // Ground ring under the current target; decoupled from any gameplay system.
     void set_target_indicator(bool visible, glm::vec3 center, float radius, glm::vec3 color);
-    void set_terrain(const game::world::Terrain& terrain);
+    void set_terrain(
+        const game::world::Terrain& terrain,
+        glm::vec2 streaming_center = glm::vec2{0.0f},
+        int streaming_radius_chunks = 10);
     void set_brush_cursor(
         const game::world::Terrain& terrain,
         glm::vec2 center,

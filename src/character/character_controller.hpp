@@ -34,6 +34,7 @@ struct MovementSettings {
     float run_speed = 4.2f;
     float backward_speed = 1.8f;
     float strafe_speed = 2.0f;
+    float combat_backward_speed = 3.0f;
     float acceleration = 14.0f;
     float deceleration = 18.0f;
     float air_control = 0.25f;
@@ -48,7 +49,6 @@ struct MovementSettings {
 struct CharacterControllerInput {
     float forward = 0.0f;
     float strafe = 0.0f;
-    bool run = false;
     bool jump_pressed = false;
 };
 
@@ -70,6 +70,8 @@ public:
     void set_facing_target(std::optional<float> yaw);
     // Radians per second used to turn toward the facing target; 0 keeps the smooth default turn.
     void set_facing_rotation_speed(float radians_per_second);
+    // True while a facing target is set (combat): movement uses the melee strafe clips.
+    [[nodiscard]] bool combat_stance() const;
     [[nodiscard]] MovementState movement_state() const;
     [[nodiscard]] bool grounded() const;
     [[nodiscard]] float vertical_velocity() const;
@@ -79,6 +81,8 @@ public:
 private:
     void update_animation(const CharacterControllerInput& input);
     void select_locomotion_animation(const CharacterControllerInput& input);
+    bool select_combat_animation(const CharacterControllerInput& input, bool moving);
+    bool play_loop(std::string_view clip, bool keep_phase = false);
 
     Character& character_;
     MovementSettings settings_;
@@ -93,6 +97,9 @@ private:
     bool previous_jump_pressed_ = false;
     bool jump_start_playing_ = false;
     bool landing_animation_playing_ = false;
+    // Hysteresis for the 8-way combat clip choice, so a direction on a sector edge does not flicker.
+    int combat_sector_ = 0;
+    bool combat_sector_valid_ = false;
     bool animation_preview_active_ = false;
     std::string_view active_animation_;
 };

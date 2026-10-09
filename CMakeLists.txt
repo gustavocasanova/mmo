@@ -64,12 +64,14 @@ target_link_libraries(mmo_character PUBLIC glm::glm PRIVATE fastgltf::fastgltf)
 add_library(mmo_editor STATIC
     src/editor/asset_database.cpp
     src/editor/editor_camera.cpp
+    src/editor/editor_history.cpp
     src/editor/selection.cpp
+    src/editor/world_document.cpp
     src/editor/world_editor.cpp)
 target_include_directories(mmo_editor PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_features(mmo_editor PUBLIC cxx_std_20)
-target_link_libraries(mmo_editor PUBLIC glm::glm)
+target_link_libraries(mmo_editor PUBLIC glm::glm mmo_character)
 
 add_executable(mmo_client
     src/apps/client/main.cpp

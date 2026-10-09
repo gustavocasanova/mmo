@@ -1,5 +1,7 @@
 #pragma once
 
+#include "game/world/terrain.hpp"
+
 #include <glm/vec2.hpp>
 
 #include <array>
@@ -12,6 +14,7 @@ struct GLFWwindow;
 namespace mmo::editor {
 
 class AssetDatabase;
+class EditorHistory;
 class SelectionManager;
 
 struct AssetDrop {
@@ -21,6 +24,10 @@ struct AssetDrop {
 
 struct EditorUIActions {
     bool world_changed = false;
+    bool request_save = false;
+    bool request_load = false;
+    bool request_undo = false;
+    bool request_redo = false;
     std::optional<AssetDrop> asset_drop;
 };
 
@@ -35,7 +42,12 @@ public:
     [[nodiscard]] EditorUIActions draw(
         bool visible,
         SelectionManager& selection,
-        AssetDatabase& assets);
+        AssetDatabase& assets,
+        const EditorHistory& history,
+        bool& terrain_tools_active,
+        game::world::TerrainBrush& terrain_brush,
+        game::world::TerrainMaterial& terrain_material,
+        float& brush_radius);
     void set_status(std::string message, bool is_error);
     void render();
     [[nodiscard]] bool wants_mouse_capture() const;

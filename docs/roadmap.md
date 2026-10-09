@@ -4,7 +4,7 @@
 
 O projeto tem um protótipo 3D local com terreno procedural, personagem procedural com equipamentos interativos, iluminação direcional simples, câmera em terceira pessoa e movimentação WASD. Os componentes do Marco 002 estão implementados, com parte do Marco 003 já disponível.
 
-A próxima etapa é completar o Mundo 3D do Marco 003, principalmente carregamento de modelos e texturas. A primeira ferramenta de terreno também já permite esculpir e persistir o heightfield atual; não substitui o carregamento de assets nem a validação visual do marco. A numeração exibida na janela não indica que todos os requisitos anteriores foram concluídos.
+A próxima etapa é completar o Mundo 3D do Marco 003, principalmente carregamento de modelos e texturas. A ferramenta de terreno/editor agora também oferece malhas em chunks, documento versionado do mundo e histórico de undo/redo. Isso não substitui o carregamento de assets nem a validação visual dos marcos anteriores. A numeração exibida na janela não indica que todos os requisitos anteriores foram concluídos.
 
 ## World Editor incremental
 
@@ -15,9 +15,14 @@ A próxima etapa é completar o Mundo 3D do Marco 003, principalmente carregamen
 - [ ] **Marco 4 — Transform (implementação e testes CPU concluídos; validação visual pendente):** mover, rotacionar e redimensionar os objetos selecionáveis; gizmos nos eixos XYZ, seleção de eixo, espaço world/local e snap de grid/rotação/escala. Arraste com o botão esquerdo aplica a transformação no eixo ativo; M/R/T escolhem mover/rotacionar/redimensionar, X/Y/Z/U escolhem o eixo, G alterna snap e C alterna espaço.
 - [ ] **Marco 5 — World Hierarchy (implementação e testes CPU concluídos; validação visual pendente):** painel gráfico Hierarchy/Inspector com seleção, renomear, editar transform, duplicar e apagar objetos.
 - [ ] **Marco 6 — Asset Browser (implementação e testes CPU concluídos; validação visual pendente):** catálogo de GLB/glTF e prefabs versionados, busca, criação de prefab e arrastar assets para a viewport para instanciar modelos estáticos selecionáveis.
-- [ ] Marcos seguintes: ferramentas avançadas de terreno, serialização completa de mundo e undo/redo.
+- [x] **Marco 7 — Terrain e persistência do editor:** malha do heightfield em chunks 16×16, salvar/carregar documento de mundo versionado com terreno e objetos, undo/redo com coalescência de pinceladas e arrastes, e barra visual com ações de persistência/histórico.
+- [x] **Marco 8 — Streaming de meshes de terreno:** mundo de 384×384 células (24×24 chunks), meshes OpenGL carregadas sob demanda em torno da câmera e descarregadas ao sair da janela ativa. Arquivos legados de 96×96 células são migrados para o centro do mundo maior.
+- [x] **Marco 9 — Streaming de dados CPU por região:** amostras divididas em regiões persistidas em sidecar, cache LRU limitada a 128 regiões, gravação de páginas sujas e carregamento sob demanda para amostragem, escultura e geração de mesh.
+- [x] **Marco 10 — Pintura de materiais de terreno:** pesos de material por vértice, pincel radial com falloff e mistura suave, quatro camadas de paleta procedural (grama/terra/rocha/areia), persistência no documento e nas regiões sidecar e atualização seletiva de meshes.
+- [x] **Polimento da UI do editor:** barra compacta com ações frequentes e modos, painel Scene com abas Objects/Assets, viewport central ampliada e controles visuais para ferramentas de terreno, pincel, material e raio; atalhos existentes preservados.
+- [ ] Próximos marcos: materiais com texturas importadas e validação visual dos painéis/interações.
 
-Validação: testes CPU de modo, câmera, seleção, transformações, CRUD do Hierarchy/Inspector, catálogo de assets, manifests de prefab e conversão de modelos estáticos passaram. O cliente compila. Falta confirmar visualmente na janela os painéis, o drag & drop e a instanciação. O Asset Browser indexa `assets/`, `content/`, `personagem/` e `Universal Animation Library[Standard]/`; modelos com skin e texturas ainda não são suportados como instâncias do editor. Movimento e pulo do personagem permanecem exclusivos do Game Mode. A câmera de terceira pessoa e a câmera do editor usam movimento do mouse para olhar para cima/baixo no sentido esperado. Órbita/pan da câmera de edição ainda não estão disponíveis.
+Validação CPU cobre modo, câmera, seleção, transformações, CRUD do Hierarchy/Inspector, catálogo de assets, manifests de prefab, conversão de modelos estáticos, terreno, streaming GPU/CPU por região, pintura de materiais, documento de mundo e undo/redo. Build do cliente e testes `TerrainTest`/`WorldEditorModeTest` passaram no Marco 10. Ainda falta confirmar visualmente na janela os painéis, o streaming durante deslocamento, a pintura de materiais e o drag & drop/instanciação. A paleta procedural não substitui o carregamento de texturas artísticas. Movimento e pulo do personagem permanecem exclusivos do Game Mode. Órbita/pan da câmera de edição ainda não estão disponíveis.
 
 ## Marco 001 — Janela e triângulo
 

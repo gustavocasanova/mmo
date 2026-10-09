@@ -60,7 +60,7 @@ Não criar uma interface genérica para vários backends gráficos agora. `rende
 
 O `mmo_editor` mantém seleção e transformações no lado CPU, sem dependência de OpenGL. `SelectionManager` armazena os bounds locais e o transform de cada objeto selecionável, realiza raycasts em espaço local e fornece bounds mundiais. O cliente encaminha esses transforms ao `renderer` para desenhar os objetos e os gizmos; bounds mundiais também atualizam a colisão aproximada do mundo.
 
-M/R/T selecionam mover/rotacionar/escala, X/Y/Z/U selecionam eixo, G alterna snap e C alterna espaço World/Local. A UI de ImGui fica no cliente; SelectionManager também oferece as operações CPU de renomear, duplicar, apagar e editar transforms exibidas pelos painéis Hierarchy e Inspector.
+M/R/T selecionam mover/rotacionar/escala, X/Y/Z/U selecionam eixo, G alterna snap e C alterna espaço World/Local. A UI de ImGui fica no cliente; a barra superior também expõe botões para modos de transformação, snap e espaço, além das ferramentas de terreno, pincel, material e raio. O painel lateral reúne objetos e assets em abas; o Inspector permanece à direita e a viewport aceita drag & drop. SelectionManager também oferece as operações CPU de renomear, duplicar, apagar e editar transforms exibidas pelos painéis.
 
 O `AssetDatabase` do editor indexa GLB/glTF nos diretórios de conteúdo configurados e manifests `.mmoprefab` versionados sob `content/prefabs/`. Um prefab referencia um modelo com caminho relativo ao projeto; o Asset Browser permite busca, criação e drag & drop para a viewport. O renderer converte nós de modelos estáticos em geometria centrada para desenhar e selecionar instâncias. Modelos com skin, materiais/texturas visuais, persistência de cenas e undo/redo continuam pendentes; falhas de carregamento ou posicionamento são mostradas no painel.
 
@@ -196,13 +196,28 @@ Desenvolver o cliente no Windows 11/VS 2022 x64. Planejar o servidor para Linux 
 
 ### Ferramenta inicial de terreno
 
-`game::world::Terrain` guarda um heightfield CPU de 96 × 96 células, com amostragem,
-escultura radial, interseção de raio e leitura/escrita versionada. O renderer converte
-seus triângulos em uma mesh OpenGL atualizável; o controlador de personagem consulta a
-altura do terreno ao caminhar e ao aterrissar.
+`game::world::Terrain` guarda um heightfield CPU finito de 384 × 384 células, com
+amostragem, escultura radial, interseção de raio e leitura/escrita versionada. A malha
+de runtime é dividida em 24 × 24 chunks de 16 × 16 células, mantendo coordenadas,
+alturas e normais contínuas nas bordas. O renderer mantém meshes OpenGL apenas na
+janela de chunks ao redor do foco da câmera e as cria/remove quando essa janela muda;
+os dados CPU também são páginas de região com LRU limitado a 128 regiões; páginas
+sujas são persistidas em `demo.mmoworld.regions/region_<x>_<z>.mmohm` e carregadas
+ao consultar uma área que saiu da cache. O controlador consulta a altura ao caminhar e
+aterrissar, com limites de movimento iguais aos limites do terreno.
 
-No cliente, `E` alterna o modo de edição. Os botões 1/2/3 selecionam elevar, baixar e
-nivelar; o botão esquerdo aplica o pincel e a roda altera seu raio. `Ctrl+S` salva em
-`content/worlds/demo.mmoterrain` e `Ctrl+L` carrega esse arquivo. A câmera continua
-orbitando com o botão direito fora do modo de edição. O arquivo usa texto versionado
-com uma amostra de altura por vértice; carregamentos inválidos falham explicitamente.
+No cliente, `F1` alterna o World Editor e `F2` ativa as ferramentas de terreno. Os
+botões 1/2/3 selecionam elevar, baixar e nivelar; 4 alterna para o pincel de material,
+onde 1/2/3/5 pintam grama, terra, rocha e areia. O botão esquerdo aplica o pincel e a
+roda altera seu raio. O material usa pesos por vértice com interpolação suave e cores
+procedurais no shader; ainda não há importação nem pintura de arquivos de textura. `Ctrl+S`
+e a barra do editor salvam o documento completo em
+`content/worlds/demo.mmoworld`; `Ctrl+L` carrega terreno e objetos. O documento de
+texto versionado inclui a heightmap e referências/transformações dos objetos. Heightmaps
+legados de 96 × 96 células são centralizados no mundo ampliado; os formatos antigos
+sem dados de material assumem grama. `*.mmoterrain` ainda pode ser carregado quando
+não existe um documento de mundo. O documento principal
+mantém a heightmap completa para portabilidade; a pasta de regiões é o backing store
+usado em runtime e reconstruído ao carregar o documento.
+Undo/redo mantém até 128 estados e agrupa pinceladas e arrastes em operações únicas.
+Carregamentos inválidos falham explicitamente e não substituem os dados atuais.

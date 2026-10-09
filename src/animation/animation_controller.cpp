@@ -30,10 +30,11 @@ bool AnimationController::play_animation(std::string_view name, bool loop)
     return true;
 }
 
-bool AnimationController::cross_fade(std::string_view name, float duration_seconds, bool loop)
+bool AnimationController::cross_fade(
+    std::string_view name, float duration_seconds, bool loop, bool keep_phase)
 {
     const std::optional<std::size_t> clip = animator_.find_clip(name);
-    if (!clip || !animator_.cross_fade(*clip, duration_seconds, loop)) {
+    if (!clip || !animator_.cross_fade(*clip, duration_seconds, loop, keep_phase)) {
         return false;
     }
     has_state_ = false;

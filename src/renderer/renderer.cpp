@@ -412,12 +412,10 @@ void main() {
     vec3 surface_color = v_color;
     if (u_is_ground == 1) {
         float checker = mod(floor(v_world_position.x) + floor(v_world_position.z), 2.0);
-        vec3 grass = mix(vec3(0.22, 0.31, 0.18), vec3(0.27, 0.36, 0.22), checker);
-        vec2 tile_uv = fract(v_world_position.xz);
-        float edge = min(min(tile_uv.x, 1.0 - tile_uv.x), min(tile_uv.y, 1.0 - tile_uv.y));
-        float cell_shade = mix(0.92, 1.0, checker);
-        surface_color = mix(vec3(0.16, 0.24, 0.14), grass, smoothstep(0.0, 0.035, edge))
-            * v_color * cell_shade;
+        vec2 noise_cell = floor(v_world_position.xz * 0.5);
+        float mottling = fract(sin(dot(noise_cell, vec2(12.9898, 78.233))) * 43758.5453);
+        surface_color = v_color * mix(0.94, 1.0, checker) *
+            mix(0.96, 1.0, mottling);
     }
     float diffuse = max(dot(normalize(v_normal), normalize(vec3(-0.4, 1.0, 0.3))), 0.0);
     float lighting = 0.38 + diffuse * 0.62;
@@ -446,10 +444,20 @@ struct Renderer::Impl {
         glm::vec3 minimum;
         glm::vec3 maximum;
     };
+    struct TerrainGpuChunk {
+        std::unique_ptr<Mesh> mesh;
+        std::uint64_t revision = 0;
+    };
 
     scene::Camera camera;
     Shader program{kVertexShaderSource, kFragmentShaderSource};
     Mesh ground{make_ground_vertices()};
+    std::unordered_map<std::size_t, TerrainGpuChunk> terrain_chunks;
+    const game::world::Terrain* terrain_source = nullptr;
+    std::uint64_t streamed_terrain_revision = 0;
+    int streamed_center_chunk_x = -1;
+    int streamed_center_chunk_z = -1;
+    int streamed_radius_chunks = -1;
     Mesh brush_ring{make_brush_ring_vertices()};
     Mesh wall{make_box_vertices()};
     Mesh gizmo{make_box_vertices()};
@@ -648,21 +656,84 @@ void Renderer::set_skinning_matrices(std::span<const animation::Matrix4> matrice
     }
 }
 
-void Renderer::set_terrain(const game::world::Terrain& terrain)
+void Renderer::set_terrain(
+    const game::world::Terrain& terrain,
+    glm::vec2 streaming_center,
+    int streaming_radius_chunks)
 {
-    const std::vector<game::world::TerrainVertex> terrain_vertices = terrain.vertices();
-    std::vector<MeshVertex> vertices;
-    vertices.reserve(terrain_vertices.size());
-    for (const game::world::TerrainVertex& vertex : terrain_vertices) {
-        vertices.push_back({
-            vertex.position,
-            vertex.normal,
-            {1.0f, 1.0f, 1.0f},
-            {},
-            {},
-        });
+    if (!std::isfinite(streaming_center.x) || !std::isfinite(streaming_center.y) ||
+        streaming_radius_chunks < 0) {
+        throw std::invalid_argument("terrain streaming parameters are invalid");
     }
-    impl_->ground.update(vertices);
+    const int grid_x = static_cast<int>(std::clamp(
+        (streaming_center.x + game::world::Terrain::kHalfExtent) /
+            game::world::Terrain::kSpacing,
+        0.0f, static_cast<float>(game::world::Terrain::kCells)));
+    const int grid_z = static_cast<int>(std::clamp(
+        (streaming_center.y + game::world::Terrain::kHalfExtent) /
+            game::world::Terrain::kSpacing,
+        0.0f, static_cast<float>(game::world::Terrain::kCells)));
+    const int center_chunk_x = std::min(
+        grid_x / game::world::Terrain::kChunkCells,
+        game::world::Terrain::kChunksPerSide - 1);
+    const int center_chunk_z = std::min(
+        grid_z / game::world::Terrain::kChunkCells,
+        game::world::Terrain::kChunksPerSide - 1);
+    if (impl_->terrain_source == &terrain &&
+        impl_->streamed_terrain_revision == terrain.revision() &&
+        impl_->streamed_center_chunk_x == center_chunk_x &&
+        impl_->streamed_center_chunk_z == center_chunk_z &&
+        impl_->streamed_radius_chunks == streaming_radius_chunks) {
+        return;
+    }
+
+    const std::vector<game::world::TerrainChunkCoordinate> terrain_coordinates =
+        terrain.chunk_coordinates_near(streaming_center, streaming_radius_chunks);
+    std::unordered_map<std::size_t, bool> active;
+    active.reserve(terrain_coordinates.size());
+    for (const game::world::TerrainChunkCoordinate& coordinate : terrain_coordinates) {
+        const std::size_t key = static_cast<std::size_t>(
+            coordinate.z * game::world::Terrain::kChunksPerSide + coordinate.x);
+        active.emplace(key, true);
+        Impl::TerrainGpuChunk& cached = impl_->terrain_chunks[key];
+        const std::uint64_t revision =
+            terrain.chunk_revision(coordinate.x, coordinate.z);
+        if (cached.mesh && cached.revision == revision) {
+            continue;
+        }
+        const game::world::TerrainChunk terrain_chunk =
+            terrain.chunk_geometry(coordinate.x, coordinate.z);
+        std::vector<MeshVertex> vertices;
+        vertices.reserve(terrain_chunk.vertices.size());
+        for (const game::world::TerrainVertex& vertex : terrain_chunk.vertices) {
+            vertices.push_back({
+                vertex.position,
+                vertex.normal,
+                vertex.color,
+                {},
+                {},
+            });
+        }
+        if (cached.mesh) {
+            cached.mesh->update(vertices);
+        } else {
+            cached.mesh = std::make_unique<Mesh>(vertices);
+        }
+        cached.revision = terrain_chunk.revision;
+    }
+    for (auto iterator = impl_->terrain_chunks.begin();
+        iterator != impl_->terrain_chunks.end();) {
+        if (active.find(iterator->first) == active.end()) {
+            iterator = impl_->terrain_chunks.erase(iterator);
+        } else {
+            ++iterator;
+        }
+    }
+    impl_->terrain_source = &terrain;
+    impl_->streamed_terrain_revision = terrain.revision();
+    impl_->streamed_center_chunk_x = center_chunk_x;
+    impl_->streamed_center_chunk_z = center_chunk_z;
+    impl_->streamed_radius_chunks = streaming_radius_chunks;
 }
 
 void Renderer::set_brush_cursor(
@@ -776,7 +847,14 @@ void Renderer::render(
     impl_->program.set_vec3("u_tint", impl_->ground_material.tint);
     impl_->program.set_int("u_is_ground",
         impl_->ground_material.pattern == scene::SurfacePattern::checker_grid ? 1 : 0);
-    impl_->ground.draw();
+    if (impl_->terrain_chunks.empty()) {
+        impl_->ground.draw();
+    } else {
+        for (const auto& [key, chunk] : impl_->terrain_chunks) {
+            (void)key;
+            chunk.mesh->draw();
+        }
+    }
 
     if (impl_->brush_cursor_visible) {
         impl_->program.set_int("u_is_skinned", 0);

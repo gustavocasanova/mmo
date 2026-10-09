@@ -39,5 +39,9 @@ Desktop.ini
 # Local CMake configuration
 /CMakeUserPresets.json
 
+# Licensed Human Melee Animations pack and locally generated retarget output
+/assets/animations/Human Melee Animations FREE/
+/assets/animations/generated/melee_combat_ual.glb
+
 # ImGui local layout
 imgui.ini
