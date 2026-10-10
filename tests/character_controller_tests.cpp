@@ -2,8 +2,8 @@
 #include "character/character.hpp"
 #include "character/character_controller.hpp"
 #include "character/combat.hpp"
-#include "game/world/collision_world.hpp"
-#include "game/world/terrain.hpp"
+#include "world/collision_world.hpp"
+#include "world/terrain.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -56,7 +56,7 @@ void test_camera_relative_and_normalized_movement(
     const std::shared_ptr<const mmo::assets::Model>& model)
 {
     using namespace mmo;
-    game::world::CollisionWorld world;
+    world::CollisionWorld world;
     auto first = make_player(model);
     auto second = make_player(model);
     auto turning_player = make_player(model);
@@ -91,9 +91,9 @@ void test_acceleration_jump_and_world_collision(
     const std::shared_ptr<const mmo::assets::Model>& model)
 {
     using namespace mmo;
-    const game::world::CollisionWorld world(
+    const world::CollisionWorld world(
         {},
-        {game::world::CollisionBox{
+        {world::CollisionBox{
             {-1.0f, 0.0f, -1.0f}, {-0.5f, 3.0f, 1.0f}}});
     auto player = make_player(model);
     bind_movement_animations(player);
@@ -132,7 +132,7 @@ void test_speed_settings_and_animation_pack(
     const std::shared_ptr<const mmo::assets::Model>& model)
 {
     using namespace mmo;
-    game::world::CollisionWorld world;
+    world::CollisionWorld world;
     auto walker = make_player(model);
     auto runner = make_player(model);
     bind_movement_animations(walker);
@@ -204,10 +204,10 @@ void test_controller_follows_sculpted_ground(
     const std::shared_ptr<const mmo::assets::Model>& model)
 {
     using namespace mmo;
-    game::world::CollisionWorld collision_world;
-    game::world::Terrain terrain;
+    world::CollisionWorld collision_world;
+    world::Terrain terrain;
     check(terrain.apply_brush(
-            {0.0f, 0.0f}, 4.0f, 2.0f, 1.0f, game::world::TerrainBrush::raise),
+            {0.0f, 0.0f}, 4.0f, 2.0f, 1.0f, world::TerrainBrush::raise),
         "terrain setup did not sculpt a hill");
     auto player = make_player(model);
     bind_movement_animations(player);
@@ -234,7 +234,7 @@ void test_walk_and_attack_are_layered(
     const std::shared_ptr<const mmo::assets::Model>& model)
 {
     using namespace mmo;
-    game::world::CollisionWorld collision_world;
+    world::CollisionWorld collision_world;
     auto player = make_player(model);
     bind_movement_animations(player);
     character::CharacterController controller(player);

@@ -32,6 +32,7 @@ int glfw_key(Key key)
     case Key::F1: return GLFW_KEY_F1;
     case Key::F2: return GLFW_KEY_F2;
     case Key::F3: return GLFW_KEY_F3;
+    case Key::F4: return GLFW_KEY_F4;
     case Key::Tab: return GLFW_KEY_TAB;
     case Key::L: return GLFW_KEY_L;
     case Key::LeftControl: return GLFW_KEY_LEFT_CONTROL;
@@ -54,6 +55,7 @@ int glfw_key(Key key)
     case Key::Digit8: return GLFW_KEY_8;
     case Key::Digit9: return GLFW_KEY_9;
     case Key::T: return GLFW_KEY_T;
+    case Key::I: return GLFW_KEY_I;
     }
     return GLFW_KEY_UNKNOWN;
 }

@@ -38,7 +38,8 @@ Validar a direção com uma cena pequena: terreno, rochas, árvores, água e um 
 
 | Módulo | Responsabilidade | Não deve depender de |
 | --- | --- | --- |
-| `core` | logging, tempo, configuração, IDs, erros | GLFW, OpenGL, regras de jogo |
+| `core` | logging, tempo, configuração, IDs, erros, formato texto de conteúdo | GLFW, OpenGL, regras de jogo |
+| `world` | terreno e colisão, sem regra de jogo | renderer, gameplay |
 | `platform` | janela, eventos, input, filesystem/clock do SO | regras do mundo, recursos OpenGL |
 | `renderer` | dispositivo, buffers, shaders, materiais, render passes | gameplay, rede, banco |
 | `resources` | localizar, carregar, validar e cachear assets | API gráfica nos formatos de domínio |
@@ -196,7 +197,7 @@ Desenvolver o cliente no Windows 11/VS 2022 x64. Planejar o servidor para Linux 
 
 ### Ferramenta inicial de terreno
 
-`game::world::Terrain` guarda um heightfield CPU de 96 × 96 células, com amostragem,
+`world::Terrain` guarda um heightfield CPU de 96 × 96 células, com amostragem,
 escultura radial, interseção de raio e leitura/escrita versionada. O renderer converte
 seus triângulos em uma mesh OpenGL atualizável; o controlador de personagem consulta a
 altura do terreno ao caminhar e ao aterrissar.

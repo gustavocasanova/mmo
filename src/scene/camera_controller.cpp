@@ -1,6 +1,6 @@
 #include "scene/camera_controller.hpp"
 
-#include "game/world/collision_world.hpp"
+#include "world/collision_world.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -101,7 +101,7 @@ void CameraController::reset_behind_target(float target_yaw)
 CameraPose CameraController::update(
     float delta_seconds,
     const CameraTarget& target,
-    const game::world::CollisionWorld* collision_world)
+    const world::CollisionWorld* collision_world)
 {
     const float elapsed = std::max(delta_seconds, 0.0f);
     const math::Vec3 desired_focus = target.position + settings_.target_offset;

@@ -42,20 +42,38 @@ bool CombatController::request(CombatState state)
         if (action.state != state || action.clip_name.empty()) {
             continue;
         }
-        animation::ActionSettings settings;
-        settings.tag = static_cast<std::uint32_t>(state);
-        settings.duration = action.duration;
-        settings.speed = action.speed;
-        settings.hit_time = action.hit_time;
-        settings.blend_in = action.blend_in;
-        settings.blend_out = action.blend_out;
-        if (!character_.model().animation().play_action(action.clip_name, settings)) {
-            return false;
-        }
-        state_ = state;
-        return true;
+        return play_action(action);
     }
     return false;
+}
+
+bool CombatController::request_primary_attack()
+{
+    const auto* equipment = character_.model().equipment().get_equipped(
+        equipment::EquipmentSlot::MainHand);
+    if (equipment) {
+        if (const auto* attack = equipment->primary_attack()) {
+            return play_action({CombatState::Attack2, attack->clip_name, attack->duration,
+                attack->speed, attack->hit_time, attack->blend_in, attack->blend_out});
+        }
+    }
+    return request(CombatState::Attack);
+}
+
+bool CombatController::play_action(const CombatActionDefinition& action)
+{
+    animation::ActionSettings settings;
+    settings.tag = static_cast<std::uint32_t>(action.state);
+    settings.duration = action.duration;
+    settings.speed = action.speed;
+    settings.hit_time = action.hit_time;
+    settings.blend_in = action.blend_in;
+    settings.blend_out = action.blend_out;
+    if (!character_.model().animation().play_action(action.clip_name, settings)) {
+        return false;
+    }
+    state_ = action.state;
+    return true;
 }
 
 void CombatController::update()

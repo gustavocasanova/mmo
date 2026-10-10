@@ -54,6 +54,8 @@ public:
     void set_event_handler(EventHandler handler);
     // False when the action is unknown, has no clip, or another action is still in progress.
     bool request(CombatState state);
+    // Uses the equipped object through Equipment, without item IDs or downcasts.
+    bool request_primary_attack();
     void update();
 
     [[nodiscard]] CombatState state() const;
@@ -61,6 +63,8 @@ public:
     [[nodiscard]] float attack_duration() const;
 
 private:
+    bool play_action(const CombatActionDefinition& action);
+
     Character& character_;
     std::vector<CombatActionDefinition> actions_;
     EventHandler handler_;

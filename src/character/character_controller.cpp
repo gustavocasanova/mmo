@@ -70,8 +70,8 @@ void CharacterController::update(
     float delta_seconds,
     CharacterControllerInput input,
     float camera_yaw,
-    const game::world::CollisionWorld& collision_world,
-    const game::world::Terrain* terrain)
+    const world::CollisionWorld& collision_world,
+    const world::Terrain* terrain)
 {
     if (!std::isfinite(delta_seconds) || delta_seconds < 0.0f ||
         !std::isfinite(input.forward) || !std::isfinite(input.strafe) ||

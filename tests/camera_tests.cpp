@@ -1,6 +1,6 @@
 #include "scene/camera.hpp"
 #include "scene/camera_controller.hpp"
-#include "game/world/collision_world.hpp"
+#include "world/collision_world.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -103,9 +103,9 @@ void test_projection_validation()
 void test_camera_obstacle_collision()
 {
     using namespace mmo;
-    const game::world::CollisionWorld world(
+    const world::CollisionWorld world(
         {},
-        {game::world::CollisionBox{
+        {world::CollisionBox{
             {-1.0f, 0.0f, -2.2f}, {1.0f, 3.0f, -1.8f}}});
     scene::CameraController camera;
     const scene::CameraTarget target{{0.0f, 0.0f, 0.0f}, 0.0f};

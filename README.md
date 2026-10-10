@@ -77,7 +77,7 @@ Version: whatever the vcpkg `glfw3` port resolves to when you bootstrap (typical
 - **Not using vcpkg `glad`:** that port is GLAD 1 (`glad/glad.h`).
 - **Impact:** static library `glad`, renderer-only. See `third_party/glad/README.md`.
 
-GLM is used for renderer camera math. Networking, database, GLB/glTF loader, GPU texture upload and audio remain deferred. CPU tests use CTest and synthetic model data; no test framework or asset parser was added.
+GLM provides CPU math, fastgltf imports GLB/glTF models and animations, and ImGui provides the editor panels. Networking, database, GPU texture upload and audio remain deferred. CPU tests use CTest, synthetic data and the bundled glTF assets.
 
 ## Configure, build, run (PowerShell)
 
@@ -111,6 +111,19 @@ Uma cena em terceira pessoa com terreno verde quadriculado, o modelo rigged do p
 
 The console prints OpenGL version, vendor, renderer and GLSL version, loaded mesh/bone/clip counts, and controls.
 
+## Primeiro item: espada de madeira
+
+O cliente começa com uma espada de treino equipada na mão direita. **F4** equipa
+ou remove, e **I** abre o inventário; **Tab** seleciona um inimigo e **1** liga o
+ataque automático quando estiver próximo. A espada acompanha as animações, usa o
+clip `Sword_Attack` e define dano, cadência e alcance. Itens são arquivos de dados
+`.mmoitem` ([sistema de itens](docs/items.md)). Use o scroll para aproximar.
+
+O [asset e seus controles](content/items/wooden_sword/README.md), o
+[sistema de itens](docs/items.md), o
+[fluxo de equipamento](docs/equipment-system.md) e o
+[mapa atualizado dos módulos](docs/modules.md) estão documentados separadamente.
+
 ## Marco 003 acceptance
 
 - [ ] CMake configure succeeds with MSVC x64 and the vcpkg toolchain
@@ -140,7 +153,7 @@ The console prints OpenGL version, vendor, renderer and GLSL version, loaded mes
 
 ## Tests
 
-`CharacterEquipmentTest` validates synthetic model/skeleton data, animation state/crossfade and skin matrices, all equipment slots, attachment resolution, replacement, unequip and failure atomicity without opening a window. Run it with the `ctest` command above. GPU rendering and import of the user-provided GLB are runtime checks.
+`CharacterEquipmentTest` validates synthetic model/skeleton data, animation state/crossfade and skin matrices, all equipment slots, attachment resolution, replacement, unequip and failure atomicity without opening a window. `WoodenSwordTest` loads the sword from `content/items`, checks the real asset, grip pivot, attachment to the UAL rig, animated poses and the inventory → loadout → character → attack path. `ItemRulesTest` covers item files, inventory and loadout linking only the game-rules library, and `LayeringTest` fails if a module includes a layer it must not depend on. Run all ten tests with the `ctest` command above. GPU rendering is checked in the running client.
 
 ## License of content
 

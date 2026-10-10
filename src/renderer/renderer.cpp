@@ -441,7 +441,7 @@ void log_gl_info()
 }
 
 struct Renderer::Impl {
-    struct EditorModel {
+    struct StaticModel {
         std::unique_ptr<Mesh> mesh;
         glm::vec3 minimum;
         glm::vec3 maximum;
@@ -454,26 +454,23 @@ struct Renderer::Impl {
     Mesh wall{make_box_vertices()};
     Mesh gizmo{make_box_vertices()};
     Mesh character{make_placeholder_vertices()};
-    std::vector<glm::mat4> skinning_matrices;
-    struct EnemyDraw {
-        CharacterPlacement placement{0.0f, 0.0f, 0.0f, 0.0f};
+    struct InstanceDraw {
+        Placement placement{0.0f, 0.0f, 0.0f, 0.0f};
         glm::vec3 tint{1.0f};
         std::vector<glm::mat4> matrices;
+        std::vector<RigidAttachment> attachments;
     };
-    std::vector<EnemyDraw> enemies;
+    std::vector<InstanceDraw> instances;
     Mesh target_ring{make_brush_ring_vertices()};
     glm::vec3 target_ring_color{1.0f};
     bool target_ring_visible = false;
-    std::vector<glm::mat4> bind_pose_matrices;
     unsigned int skinning_buffer = 0;
     glm::vec3 character_offset{0.0f};
     float character_scale = 1.0f;
     scene::Material ground_material{{1.0f, 1.0f, 1.0f},
         scene::SurfacePattern::checker_grid};
     bool brush_cursor_visible = false;
-    scene::Material character_material{{1.0f, 1.0f, 1.0f},
-        scene::SurfacePattern::solid};
-    std::unordered_map<std::string, EditorModel> editor_models;
+    std::unordered_map<std::string, StaticModel> static_models;
 
     Impl()
     {
@@ -509,20 +506,20 @@ Renderer::Renderer()
 
 Renderer::~Renderer() = default;
 
-ModelBounds Renderer::register_editor_model(
+ModelBounds Renderer::register_static_model(
     const std::string& asset_path,
     const assets::Model& model)
 {
     if (asset_path.empty()) {
-        throw std::invalid_argument("editor model asset path must not be empty");
+        throw std::invalid_argument("static model asset path must not be empty");
     }
-    const auto existing = impl_->editor_models.find(asset_path);
-    if (existing != impl_->editor_models.end()) {
+    const auto existing = impl_->static_models.find(asset_path);
+    if (existing != impl_->static_models.end()) {
         return {existing->second.minimum, existing->second.maximum};
     }
 
     const assets::StaticModelGeometry geometry =
-        assets::build_static_model_geometry(model);
+        assets::build_static_model_geometry(model, assets::StaticModelOrigin::AssetPivot);
     std::vector<MeshVertex> vertices;
     vertices.reserve(geometry.vertices.size());
     for (const assets::ModelVertex& source : geometry.vertices) {
@@ -535,14 +532,22 @@ ModelBounds Renderer::register_editor_model(
         });
     }
     auto mesh = std::make_unique<Mesh>(vertices);
-    const auto [entry, inserted] = impl_->editor_models.emplace(
-        asset_path, Impl::EditorModel{
+    const auto [entry, inserted] = impl_->static_models.emplace(
+        asset_path, Impl::StaticModel{
             std::move(mesh), geometry.minimum, geometry.maximum});
     (void)inserted;
     return {entry->second.minimum, entry->second.maximum};
 }
 
-void Renderer::set_character_model(const assets::Model& model)
+ModelBounds Renderer::register_editor_model(
+    const std::string& asset_path, const assets::Model& model)
+{
+    const auto bounds = register_static_model(asset_path, model);
+    const glm::vec3 center = (bounds.minimum + bounds.maximum) * 0.5f;
+    return {bounds.minimum - center, bounds.maximum - center};
+}
+
+void Renderer::set_skinned_model(const assets::Model& model)
 {
     std::string reason;
     if (!model.validate(&reason)) {
@@ -577,28 +582,33 @@ void Renderer::set_character_model(const assets::Model& model)
         -(minimum.z + maximum.z) * 0.5f * impl_->character_scale,
     };
     impl_->character.update(vertices);
-    const animation::Animator bind_pose(model.skeleton);
-    impl_->bind_pose_matrices.reserve(bind_pose.pose().skin_matrices.size());
-    for (const animation::Matrix4& matrix : bind_pose.pose().skin_matrices) {
-        impl_->bind_pose_matrices.push_back(glm::make_mat4(matrix.data()));
-    }
 }
 
-void Renderer::set_enemies(std::span<const EnemyRenderInstance> enemies)
+void Renderer::set_skinned_instances(std::span<const SkinnedInstance> instances)
 {
-    impl_->enemies.clear();
-    for (const EnemyRenderInstance& enemy : enemies) {
-        if (enemy.skin_matrices.size() > kMaxSkinningBones) {
+    std::vector<Impl::InstanceDraw> draws;
+    draws.reserve(instances.size());
+    for (const SkinnedInstance& instance : instances) {
+        if (instance.skin_matrices.size() > kMaxSkinningBones) {
             throw std::length_error("OpenGL skinning palette exceeds its bone limit");
         }
-        Impl::EnemyDraw draw;
-        draw.placement = enemy.placement;
-        draw.tint = enemy.tint;
-        for (const animation::Matrix4& matrix : enemy.skin_matrices) {
+        for (const RigidAttachment& attachment : instance.attachments) {
+            if (!impl_->static_models.contains(attachment.asset_path)) {
+                throw std::invalid_argument(
+                    "attachment model is not registered: " + attachment.asset_path);
+            }
+        }
+        Impl::InstanceDraw draw;
+        draw.placement = instance.placement;
+        draw.tint = instance.tint;
+        draw.matrices.reserve(instance.skin_matrices.size());
+        for (const animation::Matrix4& matrix : instance.skin_matrices) {
             draw.matrices.push_back(glm::make_mat4(matrix.data()));
         }
-        impl_->enemies.push_back(std::move(draw));
+        draw.attachments.assign(instance.attachments.begin(), instance.attachments.end());
+        draws.push_back(std::move(draw));
     }
+    impl_->instances = std::move(draws);
 }
 
 void Renderer::set_target_indicator(
@@ -636,24 +646,12 @@ void Renderer::set_target_indicator(
     impl_->target_ring_color = color;
 }
 
-void Renderer::set_skinning_matrices(std::span<const animation::Matrix4> matrices)
+void Renderer::set_terrain(const world::Terrain& terrain)
 {
-    if (matrices.size() > kMaxSkinningBones) {
-        throw std::length_error("OpenGL skinning palette exceeds its bone limit");
-    }
-    impl_->skinning_matrices.clear();
-    impl_->skinning_matrices.reserve(matrices.size());
-    for (const animation::Matrix4& matrix : matrices) {
-        impl_->skinning_matrices.push_back(glm::make_mat4(matrix.data()));
-    }
-}
-
-void Renderer::set_terrain(const game::world::Terrain& terrain)
-{
-    const std::vector<game::world::TerrainVertex> terrain_vertices = terrain.vertices();
+    const std::vector<world::TerrainVertex> terrain_vertices = terrain.vertices();
     std::vector<MeshVertex> vertices;
     vertices.reserve(terrain_vertices.size());
-    for (const game::world::TerrainVertex& vertex : terrain_vertices) {
+    for (const world::TerrainVertex& vertex : terrain_vertices) {
         vertices.push_back({
             vertex.position,
             vertex.normal,
@@ -666,7 +664,7 @@ void Renderer::set_terrain(const game::world::Terrain& terrain)
 }
 
 void Renderer::set_brush_cursor(
-    const game::world::Terrain& terrain,
+    const world::Terrain& terrain,
     glm::vec2 center,
     float radius,
     bool visible)
@@ -688,9 +686,9 @@ void Renderer::set_brush_cursor(
     const auto make_point = [&](float angle, float distance) {
         const glm::vec2 horizontal{
             std::clamp(center.x + std::cos(angle) * distance,
-                -game::world::Terrain::kHalfExtent, game::world::Terrain::kHalfExtent),
+                -world::Terrain::kHalfExtent, world::Terrain::kHalfExtent),
             std::clamp(center.y + std::sin(angle) * distance,
-                -game::world::Terrain::kHalfExtent, game::world::Terrain::kHalfExtent),
+                -world::Terrain::kHalfExtent, world::Terrain::kHalfExtent),
         };
         return glm::vec3{
             horizontal.x, terrain.height_at(horizontal) + vertical_offset, horizontal.y};
@@ -721,9 +719,8 @@ void Renderer::set_brush_cursor(
 void Renderer::render(
     int framebuffer_width,
     int framebuffer_height,
-    const CharacterPlacement& player,
     const scene::CameraPose& camera,
-    const game::world::CollisionWorld& collision_world,
+    const world::CollisionWorld& collision_world,
     std::optional<std::uint64_t> selected_object,
     std::span<const RenderBox> editor_boxes,
     bool show_editor_gizmo,
@@ -750,7 +747,6 @@ void Renderer::render(
             matrices.data());
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
     };
-    upload_skinning_matrices(impl_->skinning_matrices);
 
     impl_->camera.set_pose(camera);
     const Mat4 projection = from_glm(impl_->camera.projection(
@@ -814,17 +810,22 @@ void Renderer::render(
                 set_matrices(from_glm(model));
                 impl_->wall.draw();
             } else {
-                const auto model_asset = impl_->editor_models.find(box.asset_path);
-                if (model_asset == impl_->editor_models.end()) {
+                const auto model_asset = impl_->static_models.find(box.asset_path);
+                if (model_asset == impl_->static_models.end()) {
                     throw std::runtime_error(
                         "editor object references an unregistered model: " + box.asset_path);
                 }
-                model_asset->second.mesh->draw();
+                // Editor objects rotate around their bounds; equipment retains
+                // the authored pivot. Both views share the same GPU resource.
+                const auto& asset = model_asset->second;
+                model = glm::translate(model, -(asset.minimum + asset.maximum) * 0.5f);
+                set_matrices(from_glm(model));
+                asset.mesh->draw();
             }
         }
     } else {
         std::uint64_t object_id = 1;
-        for (const game::world::CollisionBox& box : collision_world.boxes()) {
+        for (const world::CollisionBox& box : collision_world.boxes()) {
             const Vec3 center{
                 (box.minimum.x + box.maximum.x) * 0.5f,
                 box.minimum.y,
@@ -942,7 +943,7 @@ void Renderer::render(
         }
     }
 
-    const auto character_matrix = [this](const CharacterPlacement& placement) {
+    const auto character_matrix = [this](const Placement& placement) {
         return multiply(
             translation_matrix({placement.x + impl_->character_offset.x,
                 placement.y + impl_->character_offset.y,
@@ -951,23 +952,23 @@ void Renderer::render(
                 scale_matrix({impl_->character_scale, impl_->character_scale,
                     impl_->character_scale})));
     };
-    upload_skinning_matrices(impl_->skinning_matrices);
-    const Mat4 player_model = character_matrix(player);
-    set_matrices(player_model);
-    impl_->program.set_int("u_is_skinned",
-        impl_->character.is_skinned() && !impl_->skinning_matrices.empty() ? 1 : 0);
-    impl_->program.set_vec3("u_tint", impl_->character_material.tint);
     impl_->program.set_int("u_is_ground", 0);
-    impl_->character.draw();
-
-    for (const Impl::EnemyDraw& enemy : impl_->enemies) {
-        if (enemy.matrices.empty()) {
-            continue;
-        }
-        upload_skinning_matrices(enemy.matrices);
-        set_matrices(character_matrix(enemy.placement));
-        impl_->program.set_vec3("u_tint", enemy.tint);
+    for (const Impl::InstanceDraw& instance : impl_->instances) {
+        upload_skinning_matrices(instance.matrices);
+        const Mat4 instance_model = character_matrix(instance.placement);
+        set_matrices(instance_model);
+        impl_->program.set_int("u_is_skinned",
+            impl_->character.is_skinned() && !instance.matrices.empty() ? 1 : 0);
+        impl_->program.set_vec3("u_tint", instance.tint);
         impl_->character.draw();
+
+        impl_->program.set_int("u_is_skinned", 0);
+        impl_->program.set_vec3("u_tint", glm::vec3{1.0f});
+        for (const RigidAttachment& attachment : instance.attachments) {
+            set_matrices(multiply(instance_model,
+                from_glm(glm::make_mat4(attachment.transform.data()))));
+            impl_->static_models.at(attachment.asset_path).mesh->draw();
+        }
     }
 }
 

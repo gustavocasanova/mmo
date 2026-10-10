@@ -1,4 +1,4 @@
-#include "game/world/terrain.hpp"
+#include "world/terrain.hpp"
 
 #include <cmath>
 #include <filesystem>
@@ -16,7 +16,7 @@ void check(bool condition, const char* message)
 
 void test_brush_shapes_and_height_sampling()
 {
-    using namespace mmo::game::world;
+    using namespace mmo::world;
     Terrain terrain;
     check(terrain.apply_brush({0.0f, 0.0f}, 4.0f, 2.0f, 1.0f, TerrainBrush::raise),
         "raise brush did not modify terrain");
@@ -47,7 +47,7 @@ void test_brush_shapes_and_height_sampling()
 
 void test_mesh_and_ray_intersection()
 {
-    using namespace mmo::game::world;
+    using namespace mmo::world;
     Terrain terrain;
     glm::vec3 hit;
     const auto mesh = terrain.vertices();
@@ -66,7 +66,7 @@ void test_mesh_and_ray_intersection()
 
 void test_save_load_round_trip()
 {
-    using namespace mmo::game::world;
+    using namespace mmo::world;
     const std::filesystem::path path =
         std::filesystem::temp_directory_path() / "mmo-terrain-test.mmoterrain";
     try {

@@ -1,94 +1,62 @@
 # Organização dos módulos
 
-A aplicação conecta as partes; cada módulo cuida de uma responsabilidade. O domínio do jogo não depende de janela, renderer ou assets visuais. GLM é uma biblioteca de matemática CPU, não uma dependência de GPU.
+## Camadas
 
-## Estrutura implementada
+O código está dividido em camadas. Uma camada só depende das que estão abaixo dela,
+e o `LayeringTest` (CTest, `cmake/check_layering.cmake`) falha se um include violar
+essa regra.
 
 ```text
-src/
-  apps/client/        ponto de entrada e composição do cliente
-  platform/           Window, contexto e eventos GLFW
-  math/               convenções e transformações sobre GLM
-  assets/             MeshData, MeshCatalog, Model, AssetSystem, loaders e geometria estática
-  scene/              Camera, CameraController, Material e DrawItem
-  renderer/           Renderer, Shader e Mesh (recursos GPU)
-    opengl/           implementação do shader e buffers OpenGL
-  editor/             WorldEditor, câmera fly, seleção/transform, AssetDatabase e painéis ImGui
-  animation/          skeleton, clips, poses e crossfade (main)
-  character/          corpo/modelo, aparência e atributos (main)
-  equipment/          slots e attachments CPU (main)
-  game/
-    characters/       Character: posição, orientação e movimento
-    items/            ItemDefinition e ItemStack
-    world/            limites de movimento do protótipo
-    client/           DemoScene e CharacterVisual: aparência e animação
-content/              convenções para arquivos de conteúdo futuros
-tests/                verificações CPU sem janela
+apps/client          composição: cria sistemas, roteia input, desenha UI
+  │
+presentation/        ponte jogo → engine no cliente (itens → equipamento visual)
+  │            \
+game/                regras: combate, itens, inventário, loadout
+  │                  só core/, world/ e GLM: é o que o servidor vai linkar
+  │
+engine               core, world, animation, assets, equipment, character,
+                     scene, editor, renderer, platform
+                     nunca inclui game/, presentation/ ou apps/
 ```
 
-`src/assets/` contém o código que representa recursos, enquanto os arquivos artísticos podem estar em `assets/`, `content/` ou nos diretórios de origem já existentes. O loader GLB/glTF fornece dados CPU; o Asset Browser indexa esses modelos e os prefabs de `content/prefabs/`. O renderer de instâncias do editor suporta geometria estática e ainda não envia texturas para a GPU.
+| Módulo | Target | Responsabilidade |
+| --- | --- | --- |
+| `core/` | `mmo_core` | Formato texto versionado chave=valor usado pelo conteúdo |
+| `world/` | `mmo_world` | Terreno (heightfield) e colisão AABB |
+| `animation/` | `mmo_animation` | Skeleton, pose, clips, camadas locomoção/ação, eventos |
+| `assets/` | `mmo_assets` | Importação glTF/GLB (fastgltf), modelos CPU, geometria estática |
+| `equipment/` | `mmo_equipment` | Contrato `Equipment`, `Weapon`, `BasicEquipment`, slots visuais e encaixes em bones |
+| `character/` | `mmo_character` | Corpo/modelo, controlador de movimento, `CombatController` (clip de ataque) |
+| `scene/` | `mmo_scene` | Câmera e controlador de órbita |
+| `editor/` | `mmo_editor` | Modos, câmera livre, seleção, transformação, asset database (UI ImGui fica no cliente) |
+| `game/combat/` | `mmo_game` | Entidades de combate, alvos, auto-ataque, dano, `WeaponStats` |
+| `game/items/` | `mmo_game` | `ItemDefinition`, `ItemCatalog`, `Inventory`, `Loadout` — ver [itens](items.md) |
+| `presentation/` | `mmo_presentation` + cliente | `ItemVisual`, `LoadoutPresenter`; `EquipmentPresenter` (usa renderer) |
+| `renderer/`, `platform/` | `mmo_client` | OpenGL e GLFW |
+| `apps/client/` | `mmo_client` | `application.cpp`, `PlayerItems`, `DemoEnemies`, setup de animação, janelas ImGui |
 
-O cliente inclui ImGui com os backends GLFW/OpenGL3 para os painéis de edição. `SelectionManager` mantém a hierarquia e os transforms dos objetos; a interface é somente uma visualização/controlador desses dados CPU.
+## Fluxos que cruzam módulos
 
-## Fluxo de um frame
+**Combate.** `game::combat::CombatSystem` decide se e quando golpear (alvo, alcance,
+linha de visão, cooldown) e usa os `WeaponStats` da arma equipada ou os valores
+desarmados. Para golpear, chama `character::CombatController::request_primary_attack`,
+que toca o clip da arma (ou `Punch_Jab`). O evento `AttackHit` da animação volta para
+`CombatSystem::on_attack_hit`, que revalida e aplica o dano.
 
-```mermaid
-flowchart LR
-    Window[Window: input] --> App[Application]
-    App --> Character[Character: estado e movimento]
-    App --> Camera[CameraController e Camera]
-    Character --> Visual[CharacterVisual e DemoScene]
-    Assets[MeshCatalog: dados CPU] --> Visual
-    Assets --> GPU[Renderer: upload inicial]
-    Visual --> Draws[DrawItem: mesh, transformação, material]
-    Draws --> GPU
-    Camera --> GPU
-```
+**Itens.** Ver [itens](items.md). Em resumo: `Inventory`/`Loadout` (regra) →
+`LoadoutPresenter` (constrói `Weapon`/`BasicEquipment`) → `EquipmentManager` →
+`EquipmentPresenter` → `Renderer`.
 
-Renderer não recebe `player_x`, `player_yaw` ou fase de caminhada. Ele recebe câmera e desenhos. Um personagem, uma pedra ou um item podem produzir a mesma estrutura `DrawItem` sem adicionar condicionais de gameplay no renderer.
+**Desenho.** O renderer não sabe o que é jogador ou inimigo: recebe uma lista de
+`SkinnedInstance` (posição, tint, paleta de skinning, attachments rígidos). A matriz
+de um attachment é `instance_world * joint_global * attachment_local`.
 
-## Ownership e contratos
+## Pontos para a próxima organização
 
-- `Character` encapsula posição e orientação. Input é uma intenção (`MovementInput`), sem códigos de tecla ou chamadas GLFW. O limite de tempo de frame continua na aplicação; tick fixo e autoridade de servidor ficam para o Marco 005.
-- `DemoScene` usa a geometria de `equipment_visual` para preservar o personagem equipado da main. `CharacterVisual` mantém o componente anterior em blocos, com teste próprio, mas não é usado na cena equipada. Aparência não altera regras do domínio.
-- `ItemDefinition` identifica conteúdo por ID textual, nome e limite de pilha. `ItemStack` possui uma cópia da definição e controla quantidade; zero representa pilha vazia. Adições/remoções inválidas não alteram o estado. Não há herança entre item e personagem, nem vínculo com MeshId.
-- `MeshCatalog` possui meshes CPU e emite IDs locais. Um ID é válido somente para o catálogo de origem; não é ID persistente nem identificador de entidade.
-- `Renderer` faz upload de um snapshot do catálogo ao ser construído. Adicione todas as meshes antes de construí-lo. Meshes existentes podem ser substituídas explicitamente com `MeshCatalog::replace` e `Renderer::update_mesh`, como na troca de equipamento. Adição dinâmica de IDs e descarte por região continuam pendentes.
-- `Mesh` e `Shader` possuem os recursos GPU e os liberam por RAII. Não podem ser copiados. O renderer deve ser destruído antes da janela/contexto; a ordem de variáveis na aplicação garante isso.
-- `Material` é um valor com cor e padrão de superfície. `DrawItem` contém ID da mesh, matriz, material e um span opcional de matrizes de skinning (até 48 bones). Os dados do span devem permanecer vivos até o retorno de render. O renderer não possui ponteiros para entidades.
-- O span retornado por `DemoScene::update` vale até a próxima atualização ou destruição da cena. O renderer o consome imediatamente, sem armazená-lo.
-- `Camera` calcula visão e projeção; `CameraController` converte mouse/scroll em órbita. O controlador retorna o delta de rotação, e a aplicação decide se também deve girar o personagem.
-
-As convenções matemáticas são: mundo destro, Y para cima, frente do personagem em +Z, ângulos em radianos, matrizes column-major e composição `parent * local`. A projeção usa profundidade OpenGL de -1 a +1.
-
-## Onde implementar a próxima funcionalidade
-
-| Funcionalidade | Lugar |
-| --- | --- |
-| Importar modelo / textura para memória CPU | `assets/` |
-| Arquivos originais de arte | `content/source/` quando existirem |
-| Criar buffers / texturas GPU | `renderer/opengl/` |
-| Atributos e regras de personagem | `game/characters/` |
-| Definições de item, inventário e equipamento | `game/items/` |
-| Aparência de equipamento ou personagem | `game/client/` |
-| Limites, colisão e regras do mundo | `game/world/` |
-| Modos e ferramentas de edição do cliente | `editor/`, coordenados por `apps/client/` |
-| Sessões e sincronização | novos módulos `network/` e `game/server/` no Marco 005 |
-
-## Orientação a objetos aplicada
-
-A mudança corrige principalmente responsabilidade única e acoplamento: renderer não monta personagem, aplicação não implementa movimento, e itens não dependem da representação visual. O carregador de funções OpenGL é fornecido pela aplicação, removendo a dependência direta do renderer em Window.
-
-Encapsulamento protege estado com invariantes (Character e ItemStack). Estruturas que apenas transportam dados (Material, MeshData, DrawItem) continuam sendo valores simples. Composição é suficiente para o estado atual; não há classe-base Entity, singleton global ou fábrica abstrata sem uso concreto. Liskov e segregação de interfaces não eram problemas demonstrados pelo código anterior, que não possuía essas hierarquias.
-
-## Limites no build e validação
-
-Os targets `mmo_game`, `mmo_assets`, `mmo_scene`, `mmo_presentation`, `mmo_platform` e `mmo_renderer` declaram suas dependências no CMake. `mmo_game` depende apenas de matemática e opções de compilação; `mmo_renderer` não depende de `mmo_game` ou `mmo_platform`.
-
-`MMO_BUILD_CLIENT=OFF` remove GLFW, GLAD e o renderer do build. O CTest verifica velocidade diagonal, orientação, limites do mundo, pilhas de itens, compartilhamento de meshes, composição/animação e câmera. As bibliotecas CPU continuam disponíveis para um futuro servidor, mas não implementam ainda uma simulação autoritativa nem determinismo de rede.
-
-## Integração da main
-
-Os módulos `animation`, `character`, `equipment` e `assets/model` e a suíte CharacterEquipmentTest foram preservados. `game::characters::Character` continua sendo o estado de locomoção do protótipo; `character::Character` é a composição de corpo/modelo e atributos para modelos futuros, ainda sem ligação com a cena procedural. Não há sincronização automática entre esses dois objetos.
-
-A geração visual de equipamentos saiu de `renderer/character` para `game/client/equipment_visual`. Os atalhos 1–9, T e 0, as cores/formas, o terreno otimizado com seis vértices, a normal matrix calculada na CPU e o skinning de quatro influências foram integrados às APIs modulares. Não é necessário linkar o renderer para executar testes de skeleton, modelos ou equipamento. Os presets Windows 2022/2026 do time são mantidos; configurações Linux pessoais continuam locais.
+- `application.cpp` ainda concentra o input do editor, do terreno e o laço principal;
+  candidatos naturais são uma sessão de editor e um roteador de input.
+- `character::CombatState`/`CombatSystem` (contador de eventos) e
+  `game::combat::CombatState`/`CombatSystem` (regra) têm nomes iguais em camadas
+  diferentes.
+- `EquipmentSlot` (engine) e `ItemSlot` (jogo) são enums paralelos; `static_assert`s em
+  `presentation/item_visuals.cpp` garantem que continuem alinhados.
