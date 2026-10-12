@@ -102,8 +102,8 @@ void CharacterController::update(
 
     float desired_speed = 0.0f;
     if (movement_length > kEpsilon) {
-        const bool pure_backward = forward_input < -kEpsilon && std::abs(strafe_input) < kEpsilon;
-        desired_speed = pure_backward ? settings_.backward_speed : settings_.run_speed;
+        const bool combat_backward = facing_target_ && forward_input < -kEpsilon;
+        desired_speed = combat_backward ? settings_.combat_backward_speed : settings_.run_speed;
     }
     const float air_factor = grounded_ ? 1.0f : settings_.air_control;
     const math::Vec3 desired_velocity = movement_direction * desired_speed * air_factor;
@@ -187,9 +187,10 @@ void CharacterController::update(
             ? CharacterMovementState::Jumping
             : CharacterMovementState::Falling;
     } else if (horizontal_speed > 0.05f) {
-        state_ = !(animation_input.forward < -kEpsilon && std::abs(animation_input.strafe) < kEpsilon)
-            ? CharacterMovementState::Running
-            : CharacterMovementState::Walking;
+        const bool combat_backward = facing_target_ && animation_input.forward < -kEpsilon;
+        state_ = combat_backward
+            ? CharacterMovementState::Walking
+            : CharacterMovementState::Running;
     } else {
         state_ = CharacterMovementState::Idle;
     }
@@ -254,21 +255,24 @@ void CharacterController::select_locomotion_animation(
     }
     if (speed <= 0.05f) {
         if (active_animation_ != "Idle_Loop") {
-            (void)character_.model().animation().set_state(animation::AnimationState::Idle);
+            if (play_loop("Idle_Loop")) {
+                return;
+            }
+            if (!character_.model().animation().set_state(animation::AnimationState::Idle)) {
+                throw std::runtime_error("No compatible idle animation is bound");
+            }
             active_animation_ = "Idle_Loop";
         }
         return;
     }
 
-    const bool backwards = input.forward < -kEpsilon &&
-        std::abs(input.strafe) < kEpsilon;
-    const std::string_view clip = backwards
+    const bool combat_backward = facing_target_ &&
+        input.forward < -kEpsilon && std::abs(input.strafe) < kEpsilon;
+    const std::string_view clip = combat_backward
         ? "Walk_Backward_Loop"
-        : (state_ == CharacterMovementState::Running
-            ? "Jog_Fwd_Loop"
-            : "Walk_Loop");
+        : (state_ == CharacterMovementState::Running ? "Jog_Fwd_Loop" : "Walk_Loop");
     if (active_animation_ != clip) {
-        if (!character_.model().animation().play_animation(clip, true) &&
+        if (!play_loop(clip, true) &&
             !character_.model().animation().set_state(
                 state_ == CharacterMovementState::Running
                     ? animation::AnimationState::Run
@@ -297,6 +301,23 @@ bool CharacterController::play_loop(std::string_view clip, bool keep_phase)
 bool CharacterController::select_combat_animation(
     const CharacterControllerInput& input, bool moving)
 {
+    if (locomotion_animations_) {
+        const LocomotionAnimationSet& clips = *locomotion_animations_;
+        if (!moving) {
+            combat_sector_valid_ = false;
+            return play_loop(clips.idle);
+        }
+        const bool running = state_ == CharacterMovementState::Running;
+        const bool forward_dominant = std::abs(input.forward) >= std::abs(input.strafe);
+        const std::string_view clip = forward_dominant
+            ? input.forward < 0.0f
+                ? (running ? clips.run_backward : clips.walk_backward)
+                : (running ? clips.run_forward : clips.walk_forward)
+            : input.strafe < 0.0f
+                ? (running ? clips.run_left : clips.walk_left)
+                : (running ? clips.run_right : clips.walk_right);
+        return play_loop(clip, true);
+    }
     if (!facing_target_) {
         return false;
     }
@@ -305,12 +326,9 @@ bool CharacterController::select_combat_animation(
         clips.begin(), clips.end(), [](const animation::AnimationClip& clip) {
             return clip.name == "Melee_CombatIdle";
         });
-    if (!has_combat_locomotion) {
-        return false;
-    }
     if (!moving) {
         combat_sector_valid_ = false;
-        return play_loop("Melee_CombatIdle");
+        return has_combat_locomotion && play_loop("Melee_CombatIdle");
     }
     constexpr float kRadiansToDegrees = 57.29578f;
     constexpr float kSectorDegrees = 45.0f;
@@ -326,6 +344,9 @@ bool CharacterController::select_combat_animation(
     }
     combat_sector_ = sector;
     combat_sector_valid_ = true;
+    if (!has_combat_locomotion) {
+        return false;
+    }
     // Sectors: 0 forward, +1 forward-right, +2 right, +3 back-right, +-4 backward.
     static constexpr const char* kClips[] = {
         "Melee_Run_Forward", "Melee_StrafeRun_ForwardRight", "Melee_StrafeRun_Right",
@@ -338,9 +359,10 @@ bool CharacterController::select_combat_animation(
         static constexpr const char* kLeftClips[] = {
             "Melee_Run_Forward", "Melee_StrafeRun_ForwardLeft", "Melee_StrafeRun_Left",
             "Melee_StrafeRun_BackwardLeft", "Melee_Run_Backward"};
-        return play_loop(kLeftClips[index], true);
+        // Keep diagonal S+A responsive instead of inheriting the slow reverse clip.
+        return play_loop(index == 3 ? kLeftClips[2] : kLeftClips[index], true);
     }
-    return play_loop(kClips[index], true);
+    return play_loop(index == 3 ? kClips[2] : kClips[index], true);
 }
 bool CharacterController::combat_stance() const
 {
@@ -355,6 +377,13 @@ bool CharacterController::preview_animation(std::string_view name)
     animation_preview_active_ = true;
     active_animation_ = name;
     return true;
+}
+
+void CharacterController::set_locomotion_animation_set(
+    std::optional<LocomotionAnimationSet> animations)
+{
+    locomotion_animations_ = std::move(animations);
+    active_animation_ = "";
 }
 
 void CharacterController::set_facing_rotation_speed(float radians_per_second)

@@ -34,3 +34,15 @@ O `EquipmentManager` valida o slot, ID/nome, extensão, skeleton, bone names e t
 ## Limitações
 
 O manager resolve bone indices, mas não compõe ainda as matrizes world-space de cada attachment nem solicita ao renderer o carregamento/desenho dos modelos. Cloak é apenas um attachment; física e animação própria ficam para depois. Não existe schema JSON ou catálogo de itens nesta etapa.
+
+## Armas disponíveis no protótipo
+
+O catálogo do cliente oferece Espada grande (4), Arco de arqueiro (5), Cajado de mago (6), Espada e escudo (7) e Machado (8). Cada arma seleciona suas habilidades e, quando há animações compatíveis, percorre as variações de ataque uma a uma. O arqueiro usa as animações de locomoção do pacote Longbow, mas não recebe um ataque automático animado: os arquivos disponíveis não incluem disparo de arco.
+
+Os FBXs escolhidos dos pacotes ZIP ficam em `assets/animations/source/` localmente. Para convertê-los e retargetá-los ao esqueleto UAL, execute:
+
+```text
+node scripts/retarget_melee_animations.js <caminho-para-FBX2glTF.exe> --weapon-packs
+```
+
+O comando gera `assets/animations/generated/weapon_animations_ual.glb`, carregado pelo cliente se estiver presente. O pacote contém variações de espada grande, espada e escudo, machado e magia, locomoção de arco, além de `Jump_Running` e `Jump_Running_Landing`; as transições de salto e aterrissagem usam cross-fade para voltar à corrida equipada. Os FBXs de origem e os GLBs gerados são locais e ignorados pelo Git. Sem o GLB gerado, o cliente mantém as animações UAL embutidas e informa no console quais recursos opcionais não estão disponíveis.

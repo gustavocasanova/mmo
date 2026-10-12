@@ -34,6 +34,10 @@ private:
     std::vector<float> weights_;
 };
 
+// Replaces fully masked channels from `source`, retiming them to `target.duration`.
+void replace_masked_channels(AnimationClip& target, const AnimationClip& source,
+    const BoneMask& mask);
+
 enum class AnimationEventType {
     ActionStart,
     ActionHit,

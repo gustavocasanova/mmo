@@ -107,9 +107,9 @@ Close with the window chrome or **Escape**. The process should print `[app] shut
 
 ## Expected picture
 
-Uma cena em terceira pessoa com terreno verde quadriculado, o modelo rigged do pack Universal Animation Library e duas paredes de teste. WASD movimenta relativo à câmera; o personagem sempre corre (sem Shift; o pack não tem clipes laterais, então A/D reutilizam a corrida); Espaço pula; segure o botão direito e arraste para orbitar; scroll aproxima/afasta. As teclas `[` e `]` reproduzem, uma por vez, todos os clipes carregados. A câmera respeita o chão e recua ao encontrar as paredes; texturas ainda não são renderizadas.
+Uma cena em terceira pessoa com terreno verde quadriculado, o modelo rigged do pack Universal Animation Library e duas paredes de teste. WASD movimenta relativo à câmera; o personagem sempre corre (sem Shift); Espaço pula; clique esquerdo seleciona inimigos, `TAB`/`Shift+TAB` troca entre hostis visíveis, `0` limpa o alvo e `1` liga/desliga o auto-ataque. O ataque valida alcance e linha de visão e pode continuar enquanto o personagem se move. Segure um botão do mouse e arraste para orbitar; scroll aproxima/afasta. As teclas `[` e `]` reproduzem, uma por vez, todos os clipes carregados. A câmera respeita o chão e recua ao encontrar as paredes; texturas ainda não são renderizadas.
 
-The console prints OpenGL version, vendor, renderer and GLSL version, loaded mesh/bone/clip counts, and controls.
+The console prints OpenGL version, vendor, renderer and GLSL version, loaded mesh/bone/clip counts, and controls. In Game Mode, `2` uses the warrior basic attack ability and generates rage on a successful hit; `3` uses Power Strike when its rage cost and cooldown allow it. The target frame shows the current rage resource.
 
 ## Marco 003 acceptance
 

@@ -12,6 +12,7 @@ compile_commands.json
 # vcpkg
 /vcpkg_installed/
 /vcpkg/
+/node_modules/
 
 # IDE
 /.idea/
@@ -41,7 +42,10 @@ Desktop.ini
 
 # Licensed Human Melee Animations pack and locally generated retarget output
 /assets/animations/Human Melee Animations FREE/
+/assets/animations/source/
 /assets/animations/generated/melee_combat_ual.glb
+/assets/animations/generated/weapon_animations_ual.glb
+/Human Melee Animations FREE/
 
 # ImGui local layout
 imgui.ini

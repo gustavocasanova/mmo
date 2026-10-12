@@ -251,8 +251,17 @@ AssetEntry AssetDatabase::read_prefab(
     std::string model_line;
     std::string extra_line;
     if (!input || !std::getline(input, header) ||
-        !std::getline(input, model_line) || header != kPrefabHeader ||
-        !model_line.starts_with(kModelPrefix) || std::getline(input, extra_line)) {
+        !std::getline(input, model_line)) {
+        throw std::runtime_error("invalid prefab manifest: " + absolute_path.string());
+    }
+    if (!header.empty() && header.back() == '\r') {
+        header.pop_back();
+    }
+    if (!model_line.empty() && model_line.back() == '\r') {
+        model_line.pop_back();
+    }
+    if (header != kPrefabHeader || !model_line.starts_with(kModelPrefix) ||
+        std::getline(input, extra_line)) {
         throw std::runtime_error("invalid prefab manifest: " + absolute_path.string());
     }
 

@@ -1,7 +1,7 @@
 // Retargets selected "Human Melee Animations FREE" FBX clips onto the Universal Animation
 // Library skeleton and writes them to a skeleton-only GLB the engine can merge at load time.
 //
-// Usage: node scripts/retarget_melee_animations.js <FBX2glTF.exe>
+// Usage: node scripts/retarget_melee_animations.js <FBX2glTF.exe> [--weapon-packs]
 // FBX2glTF is available through `npm i fbx2gltf` (bin/Windows_NT/FBX2glTF.exe).
 const fs = require('fs');
 const os = require('os');
@@ -9,10 +9,15 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
-const packRoot = path.join(root, 'assets', 'animations', 'Human Melee Animations FREE');
+const packRoot = path.join(root, 'Human Melee Animations FREE');
 const male = path.join(packRoot, 'Animations', 'Male');
 const ualPath = path.join(root, 'Universal Animation Library[Standard]', 'Unreal-Godot', 'UAL1_Standard.glb');
-const outputPath = path.join(root, 'assets', 'animations', 'generated', 'melee_combat_ual.glb');
+const weaponPackMode = process.argv.includes('--weapon-packs');
+const outputPath = path.join(root, 'assets', 'animations', 'generated',
+    weaponPackMode ? 'weapon_animations_ual.glb' : 'melee_combat_ual.glb');
+const sourceModelPath = weaponPackMode
+    ? path.join(root, 'assets', 'animations', 'source', 'xbot', 'XBot.fbx')
+    : path.join(packRoot, 'Models', 'HumanM_Model.fbx');
 
 const fbx2gltf = process.argv[2];
 if (!fbx2gltf) {
@@ -20,8 +25,10 @@ if (!fbx2gltf) {
     process.exit(1);
 }
 
-const clips = [
+const meleeClips = [
     ['Melee_CombatIdle', 'Combat/HumanM@CombatIdle01.fbx'],
+    ['Melee_Greatsword_Attack', 'Combat/HumanM@Attack2H01.fbx'],
+    ['Melee_SwordShield_Attack', 'Combat/HumanM@AttackShield01.fbx'],
     ['Melee_Run_Forward', 'Movement/Run/HumanM@Run01_Forward.fbx'],
     ['Melee_Run_Backward', 'Movement/Run/HumanM@Run01_Backward.fbx'],
     ['Melee_StrafeRun_Left', 'Movement/Strafe/StrafeRun/HumanM@StrafeRun01_Left.fbx'],
@@ -32,22 +39,121 @@ const clips = [
     ['Melee_StrafeRun_BackwardRight', 'Movement/Strafe/StrafeRun/HumanM@StrafeRun01_BackwardRight.fbx'],
 ];
 
+const weaponPackClips = [
+    ...['great sword slash.fbx', 'great sword slash (2).fbx',
+        'great sword slash (3).fbx', 'great sword slash (4).fbx',
+        'great sword slash (5).fbx'].map((file, index) =>
+        [`Greatsword_Slash_${String(index + 1).padStart(2, '0')}`,
+            path.join(root, 'assets', 'animations', 'source', 'great_sword', file)]),
+    ['Greatsword_Jump_Attack', path.join(root, 'assets', 'animations', 'source',
+        'great_sword', 'great sword jump attack.fbx')],
+    ['Greatsword_Slide_Attack', path.join(root, 'assets', 'animations', 'source',
+        'great_sword', 'great sword slide attack.fbx')],
+    ['Greatsword_Spin_Attack', path.join(root, 'assets', 'animations', 'source',
+        'great_sword', 'great sword high spin attack.fbx')],
+    ['Greatsword_Attack', path.join(root, 'assets', 'animations', 'source',
+        'great_sword', 'great sword attack.fbx')],
+    ...['sword and shield slash.fbx', 'sword and shield slash (2).fbx',
+        'sword and shield slash (3).fbx', 'sword and shield slash (4).fbx',
+        'sword and shield slash (5).fbx'].map((file, index) =>
+        [`SwordShield_Slash_${String(index + 1).padStart(2, '0')}`,
+            path.join(root, 'assets', 'animations', 'source', 'sword_shield', file)]),
+    ...['sword and shield attack.fbx', 'sword and shield attack (2).fbx',
+        'sword and shield attack (3).fbx', 'sword and shield attack (4).fbx'].map(
+        (file, index) => [`SwordShield_Attack_${String(index + 1).padStart(2, '0')}`,
+            path.join(root, 'assets', 'animations', 'source', 'sword_shield', file)]),
+    ['Axe_Attack_Backhand', 'standing melee attack backhand.fbx'],
+    ['Axe_Attack_Downward', 'standing melee attack downward.fbx'],
+    ['Axe_Attack_Horizontal', 'standing melee attack horizontal.fbx'],
+    ['Axe_Attack_Spin_High', 'standing melee attack 360 high.fbx'],
+    ['Axe_Attack_Spin_Low', 'standing melee attack 360 low.fbx'],
+    ['Axe_Combo_01', 'standing melee combo attack ver. 1.fbx'],
+    ['Axe_Combo_02', 'standing melee combo attack ver. 2.fbx'],
+    ['Axe_Combo_03', 'standing melee combo attack ver. 3.fbx'],
+    ['Axe_Jump_Run_Attack', 'standing melee run jump attack.fbx'],
+].map(([name, file]) => [name, path.isAbsolute(file)
+    ? file : path.join(root, 'assets', 'animations', 'source', 'axe', file)]);
+
+weaponPackClips.push(
+    ['Mage_Attack_OneHand', path.join(root, 'assets', 'animations', 'source',
+        'magic', 'Standing 1H Magic Attack 01.fbx')],
+    ['Mage_Attack_Area', path.join(root, 'assets', 'animations', 'source',
+        'magic', 'Standing 2H Magic Area Attack 02.fbx')],
+    ['Jump_Running', path.join(root, 'assets', 'animations', 'source', 'magic',
+        'Standing Jump Running.fbx')],
+    ['Jump_Running_Landing', path.join(root, 'assets', 'animations', 'source', 'magic',
+        'Standing Jump Running Landing.fbx')],
+    ['Longbow_Idle', path.join(root, 'assets', 'animations', 'source', 'longbow',
+        'standing idle 01.fbx')],
+    ['Longbow_Run_Forward', path.join(root, 'assets', 'animations', 'source', 'longbow',
+        'standing run forward.fbx')],
+    ['Longbow_Run_Backward', path.join(root, 'assets', 'animations', 'source', 'longbow',
+        'standing run back.fbx')],
+    ['Longbow_Run_Left', path.join(root, 'assets', 'animations', 'source', 'longbow',
+        'standing run left.fbx')],
+    ['Longbow_Run_Right', path.join(root, 'assets', 'animations', 'source', 'longbow',
+        'standing run right.fbx')],
+    ['Longbow_Walk_Forward', path.join(root, 'assets', 'animations', 'source', 'longbow',
+        'standing walk forward.fbx')],
+    ['Longbow_Walk_Backward', path.join(root, 'assets', 'animations', 'source', 'longbow',
+        'standing walk back.fbx')],
+    ['Longbow_Walk_Left', path.join(root, 'assets', 'animations', 'source', 'longbow',
+        'standing walk left.fbx')],
+    ['Longbow_Walk_Right', path.join(root, 'assets', 'animations', 'source', 'longbow',
+        'standing walk right.fbx')]);
+
+const clips = weaponPackMode ? weaponPackClips : meleeClips;
+
 // source bone -> UAL bone
-const boneMap = { 'B-hips': 'pelvis', 'B-spine': 'spine_01', 'B-chest': 'spine_03', 'B-neck': 'neck_01', 'B-head': 'Head' };
-for (const [side, suffix] of [['L', 'l'], ['R', 'r']]) {
-    Object.assign(boneMap, {
-        [`B-shoulder.${side}`]: `clavicle_${suffix}`,
-        [`B-upperArm.${side}`]: `upperarm_${suffix}`,
-        [`B-forearm.${side}`]: `lowerarm_${suffix}`,
-        [`B-hand.${side}`]: `hand_${suffix}`,
-        [`B-thigh.${side}`]: `thigh_${suffix}`,
-        [`B-shin.${side}`]: `calf_${suffix}`,
-        [`B-foot.${side}`]: `foot_${suffix}`,
-        // Toes are left at rest: the converted toe tracks flip erratically between frames.
-    });
-    for (const finger of ['index', 'middle', 'ring', 'pinky', 'thumb']) {
-        for (const n of [1, 2, 3]) {
-            boneMap[`B-${finger}Finger0${n}.${side}`.replace(/(thumb|pinky)Finger/, '$1')] = `${finger}_0${n}_${suffix}`;
+const boneMap = weaponPackMode
+    ? {
+        'mixamorig:Hips': 'pelvis',
+        'mixamorig:Spine': 'spine_01',
+        'mixamorig:Spine1': 'spine_02',
+        'mixamorig:Spine2': 'spine_03',
+        'mixamorig:Neck': 'neck_01',
+        'mixamorig:Head': 'Head',
+    }
+    : {
+        'B-hips': 'pelvis',
+        'B-spine': 'spine_01',
+        'B-chest': 'spine_03',
+        'B-neck': 'neck_01',
+        'B-head': 'Head',
+    };
+for (const [side, sideName, suffix] of [['L', 'Left', 'l'], ['R', 'Right', 'r']]) {
+    if (weaponPackMode) {
+        Object.assign(boneMap, {
+            [`mixamorig:${sideName}Shoulder`]: `clavicle_${suffix}`,
+            [`mixamorig:${sideName}Arm`]: `upperarm_${suffix}`,
+            [`mixamorig:${sideName}ForeArm`]: `lowerarm_${suffix}`,
+            [`mixamorig:${sideName}Hand`]: `hand_${suffix}`,
+            [`mixamorig:${sideName}UpLeg`]: `thigh_${suffix}`,
+            [`mixamorig:${sideName}Leg`]: `calf_${suffix}`,
+            [`mixamorig:${sideName}Foot`]: `foot_${suffix}`,
+            [`mixamorig:${sideName}ToeBase`]: `ball_${suffix}`,
+        });
+        for (const finger of ['Index', 'Middle', 'Ring', 'Pinky', 'Thumb']) {
+            for (let segment = 1; segment <= 3; segment++) {
+                boneMap[`mixamorig:${sideName}Hand${finger}${segment}`] =
+                    `${finger.toLowerCase()}_0${segment}_${suffix}`;
+            }
+        }
+    } else {
+        Object.assign(boneMap, {
+            [`B-shoulder.${side}`]: `clavicle_${suffix}`,
+            [`B-upperArm.${side}`]: `upperarm_${suffix}`,
+            [`B-forearm.${side}`]: `lowerarm_${suffix}`,
+            [`B-hand.${side}`]: `hand_${suffix}`,
+            [`B-thigh.${side}`]: `thigh_${suffix}`,
+            [`B-shin.${side}`]: `calf_${suffix}`,
+            [`B-foot.${side}`]: `foot_${suffix}`,
+        });
+        for (const finger of ['index', 'middle', 'ring', 'pinky', 'thumb']) {
+            for (const n of [1, 2, 3]) {
+                boneMap[`B-${finger}Finger0${n}.${side}`.replace(/(thumb|pinky)Finger/, '$1')] =
+                    `${finger}_0${n}_${suffix}`;
+            }
         }
     }
 }
@@ -161,7 +267,7 @@ const convert = (fbx, name) => {
     return readGlb(out + '.glb');
 };
 
-const sourceModel = convert(path.join(packRoot, 'Models', 'HumanM_Model.fbx'), 'model').json;
+const sourceModel = convert(sourceModelPath, 'model').json;
 const sourceTables = nodeTables(sourceModel);
 const sourceRest = restWorlds(sourceModel);
 
@@ -171,11 +277,14 @@ const ualRest = restWorlds(ual.json);
 const ualSkin = ual.json.skins[0];
 const ualJoint = new Map(ualSkin.joints.map((node, i) => [ual.json.nodes[node].name, { node, index: i }]));
 
-const sourceHip = sourceRest[sourceTables.byName.get('B-hips')];
+const sourceHipName = weaponPackMode ? 'mixamorig:Hips' : 'B-hips';
+const sourceFootName = weaponPackMode ? 'mixamorig:LeftFoot' : 'B-foot.L';
+const sourceToeName = weaponPackMode ? 'mixamorig:LeftToeBase' : 'B-toe.L';
+const sourceHip = sourceRest[sourceTables.byName.get(sourceHipName)];
 const ualHip = ualRest[ualTables.byName.get('pelvis')];
-const sourceFoot = sourceRest[sourceTables.byName.get('B-foot.L')];
+const sourceFoot = sourceRest[sourceTables.byName.get(sourceFootName)];
 const ualFoot = ualRest[ualTables.byName.get('foot_l')];
-const sourceToe = sourceRest[sourceTables.byName.get('B-toe.L')];
+const sourceToe = sourceRest[sourceTables.byName.get(sourceToeName)];
 const ualToe = ualRest[ualTables.byName.get('ball_l')];
 console.log('rest hips   src', sourceHip.p.map((x) => x.toFixed(3)), 'ual', ualHip.p.map((x) => x.toFixed(3)));
 console.log('rest foot   src', sourceFoot.p.map((x) => x.toFixed(3)), 'ual', ualFoot.p.map((x) => x.toFixed(3)));
@@ -219,7 +328,7 @@ const inverseBindIndex = addAccessor(
 
 const animations = [];
 for (const [clipName, relative] of clips) {
-    const glb = convert(path.join(male, relative), clipName);
+    const glb = convert(weaponPackMode ? relative : path.join(male, relative), clipName);
     const animation = glb.json.animations[0];
     const { byName } = nodeTables(glb.json);
     const tracks = new Map();

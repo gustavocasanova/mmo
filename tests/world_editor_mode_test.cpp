@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 
@@ -276,10 +277,30 @@ void test_asset_database_indexes_models_and_round_trips_prefabs()
                 std::filesystem::absolute(root / "assets" / "vehicles" / "cart.GLB"),
             "prefab did not resolve to its model file");
 
+        const std::filesystem::path prefab_path = root / prefab.relative_path;
+        std::string manifest;
+        {
+            std::ifstream input(prefab_path, std::ios::binary);
+            manifest.assign(std::istreambuf_iterator<char>(input),
+                std::istreambuf_iterator<char>());
+        }
+        std::string crlf_manifest;
+        crlf_manifest.reserve(manifest.size() + 2);
+        for (char character : manifest) {
+            if (character == '\n') {
+                crlf_manifest.push_back('\r');
+            }
+            crlf_manifest.push_back(character);
+        }
+        {
+            std::ofstream output(prefab_path, std::ios::binary | std::ios::trunc);
+            output.write(crlf_manifest.data(),
+                static_cast<std::streamsize>(crlf_manifest.size()));
+        }
         mmo::editor::AssetDatabase reloaded(root);
         reloaded.refresh();
         check(reloaded.entries().size() == 2,
-            "asset database did not reload the saved prefab");
+            "asset database did not reload a CRLF prefab");
         check(!reloaded.create_prefab(
                 reloaded.entries().front().relative_path, "../escape", prefab, error) &&
                 !error.empty(),

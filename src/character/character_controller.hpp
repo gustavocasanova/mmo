@@ -52,6 +52,18 @@ struct CharacterControllerInput {
     bool jump_pressed = false;
 };
 
+struct LocomotionAnimationSet {
+    std::string_view idle;
+    std::string_view walk_forward;
+    std::string_view walk_backward;
+    std::string_view walk_left;
+    std::string_view walk_right;
+    std::string_view run_forward;
+    std::string_view run_backward;
+    std::string_view run_left;
+    std::string_view run_right;
+};
+
 class CharacterController {
 public:
     explicit CharacterController(
@@ -65,12 +77,14 @@ public:
         const game::world::CollisionWorld& collision_world,
         const game::world::Terrain* terrain = nullptr);
     [[nodiscard]] bool preview_animation(std::string_view name);
+    void set_locomotion_animation_set(
+        std::optional<LocomotionAnimationSet> animations);
     [[nodiscard]] CharacterMovementState state() const;
     // Optional yaw the character keeps facing (e.g. a combat target) instead of the move direction.
     void set_facing_target(std::optional<float> yaw);
     // Radians per second used to turn toward the facing target; 0 keeps the smooth default turn.
     void set_facing_rotation_speed(float radians_per_second);
-    // True while a facing target is set (combat): movement uses the melee strafe clips.
+    // True while a facing target is set (combat): movement uses combat-aware locomotion clips.
     [[nodiscard]] bool combat_stance() const;
     [[nodiscard]] MovementState movement_state() const;
     [[nodiscard]] bool grounded() const;
@@ -89,6 +103,7 @@ private:
     CharacterMovementState state_ = CharacterMovementState::Idle;
     MovementState movement_state_ = MovementState::Idle;
     std::optional<float> facing_target_;
+    std::optional<LocomotionAnimationSet> locomotion_animations_;
     float facing_rotation_speed_ = 0.0f;
     math::Vec3 horizontal_velocity_{0.0f};
     float vertical_velocity_ = 0.0f;

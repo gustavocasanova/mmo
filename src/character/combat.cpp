@@ -36,9 +36,21 @@ void CombatController::set_event_handler(EventHandler handler)
     handler_ = std::move(handler);
 }
 
+void CombatController::set_actions(std::vector<CombatActionDefinition> actions)
+{
+    actions_ = std::move(actions);
+    next_action_indices_.fill(0);
+}
+
 bool CombatController::request(CombatState state)
 {
-    for (const CombatActionDefinition& action : actions_) {
+    const std::size_t state_index = static_cast<std::size_t>(state);
+    if (state_index >= next_action_indices_.size() || actions_.empty()) {
+        return false;
+    }
+    for (std::size_t offset = 0; offset < actions_.size(); ++offset) {
+        const std::size_t index = (next_action_indices_[state_index] + offset) % actions_.size();
+        const CombatActionDefinition& action = actions_[index];
         if (action.state != state || action.clip_name.empty()) {
             continue;
         }
@@ -52,6 +64,7 @@ bool CombatController::request(CombatState state)
         if (!character_.model().animation().play_action(action.clip_name, settings)) {
             return false;
         }
+        next_action_indices_[state_index] = (index + 1) % actions_.size();
         state_ = state;
         return true;
     }

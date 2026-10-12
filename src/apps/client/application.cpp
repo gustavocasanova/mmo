@@ -13,6 +13,7 @@
 #include "editor/world_editor.hpp"
 #include "apps/client/target_frame.hpp"
 #include "game/combat/combat.hpp"
+#include "game/items/weapons.hpp"
 #include "game/world/collision_world.hpp"
 #include "game/world/terrain.hpp"
 #include "platform/input_settings.hpp"
@@ -21,6 +22,7 @@
 #include "scene/camera_controller.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <exception>
@@ -116,6 +118,70 @@ std::size_t add_backward_walk_clip(assets::Model& model)
 
 std::size_t find_clip_index(
     const std::vector<animation::AnimationClip>& clips,
+    std::string_view name);
+
+animation::BoneMask make_lower_body_mask(const animation::Skeleton& skeleton)
+{
+    const std::optional<std::size_t> pelvis = skeleton.find_bone("pelvis");
+    const std::optional<std::size_t> spine = skeleton.find_bone("spine_01");
+    if (!pelvis || !spine) {
+        throw std::runtime_error("running animation composition requires pelvis and spine_01 bones");
+    }
+
+    animation::BoneMask mask(skeleton.bones.size());
+    for (const animation::Bone& bone : skeleton.bones) {
+        bool below_pelvis = false;
+        bool below_spine = false;
+        for (std::size_t current = bone.index; current != animation::kNoBone;
+             current = skeleton.bones[current].parent_index) {
+            below_pelvis = below_pelvis || current == *pelvis;
+            below_spine = below_spine || current == *spine;
+        }
+        if (below_pelvis && !below_spine) {
+            mask.set_weight(bone.index, 1.0f);
+        }
+    }
+    if (mask.active_bone_count() <= 1) {
+        throw std::runtime_error("running animation composition found no leg bones");
+    }
+    return mask;
+}
+
+void compose_running_animations(assets::Model& model)
+{
+    const std::vector<animation::AnimationClip> source_clips = model.animations;
+    const animation::BoneMask lower_body_mask = make_lower_body_mask(model.skeleton);
+    const std::size_t jog_index = find_clip_index(source_clips, "Jog_Fwd_Loop");
+    const std::size_t sprint_index = find_clip_index(source_clips, "Sprint_Loop");
+    struct RunningClip {
+        std::string_view target;
+        std::string_view source;
+        std::size_t base_index;
+    };
+    const RunningClip running_clips[] = {
+        {"Jog_Fwd_Loop", "Melee_Run_Forward", jog_index},
+        {"Sprint_Loop", "Melee_Run_Forward", sprint_index},
+        {"Melee_Run_Forward", "Melee_Run_Forward", jog_index},
+        {"Melee_Run_Backward", "Melee_Run_Backward", jog_index},
+        {"Melee_StrafeRun_ForwardLeft", "Melee_StrafeRun_ForwardLeft", jog_index},
+        {"Melee_StrafeRun_ForwardRight", "Melee_StrafeRun_ForwardRight", jog_index},
+        {"Melee_StrafeRun_BackwardLeft", "Melee_StrafeRun_BackwardLeft", jog_index},
+        {"Melee_StrafeRun_BackwardRight", "Melee_StrafeRun_BackwardRight", jog_index},
+    };
+
+    for (const RunningClip& binding : running_clips) {
+        animation::AnimationClip composed = source_clips[binding.base_index];
+        composed.name = binding.target;
+        const animation::AnimationClip& lower_body =
+            source_clips[find_clip_index(source_clips, binding.source)];
+        animation::replace_masked_channels(composed, lower_body, lower_body_mask);
+        const std::size_t target_index = find_clip_index(model.animations, binding.target);
+        model.animations[target_index] = std::move(composed);
+    }
+}
+
+std::size_t find_clip_index(
+    const std::vector<animation::AnimationClip>& clips,
     std::string_view name)
 {
     const auto clip = std::find_if(clips.begin(), clips.end(),
@@ -127,6 +193,31 @@ std::size_t find_clip_index(
             "Universal Animation Library is missing required clip: " + std::string(name));
     }
     return static_cast<std::size_t>(std::distance(clips.begin(), clip));
+}
+
+std::optional<std::string_view> find_weapon_animation(
+    const game::items::WeaponDefinition& weapon,
+    const std::vector<animation::AnimationClip>& clips)
+{
+    for (const std::string_view name : weapon.attack_animations) {
+        if (name.empty()) continue;
+        const auto clip = std::find_if(clips.begin(), clips.end(),
+            [name](const animation::AnimationClip& candidate) {
+                return candidate.name == name;
+            });
+        if (clip != clips.end()) return clip->name;
+    }
+    return std::nullopt;
+}
+
+bool has_animation(
+    const std::vector<animation::AnimationClip>& clips,
+    std::string_view name)
+{
+    return std::any_of(clips.begin(), clips.end(),
+        [name](const animation::AnimationClip& clip) {
+            return clip.name == name;
+        });
 }
 
 void bind_animations(character::Character& character)
@@ -327,9 +418,22 @@ int run_application()
         if (std::filesystem::exists(melee_animation_path)) {
             assets::append_animations(
                 loaded_model, assets.load_model(melee_animation_path));
+            compose_running_animations(loaded_model);
         } else {
             std::cout << "[animation] optional retargeted melee locomotion is missing; "
-                << "using the built-in UAL clips. See docs/character-system.md to generate it.\n";
+                << "using built-in UAL locomotion. Run "
+                << "scripts/retarget_melee_animations.js with FBX2glTF to enable "
+                << "Human Melee combat movement.\n";
+        }
+        const std::filesystem::path weapon_animation_path{
+            "assets/animations/generated/weapon_animations_ual.glb"};
+        if (std::filesystem::exists(weapon_animation_path)) {
+            assets::append_animations(
+                loaded_model, assets.load_model(weapon_animation_path));
+        } else {
+            std::cout << "[animation] optional weapon animation pack is missing; "
+                << "run scripts/retarget_melee_animations.js with --weapon-packs "
+                << "to enable the imported attacks, longbow locomotion and running jump.\n";
         }
         auto body_model = std::make_shared<const assets::Model>(std::move(loaded_model));
         character::Character player(body_model);
@@ -345,6 +449,13 @@ int run_application()
         game::combat::TargetSystem targets;
         game::combat::CombatSystem combat_system(
             game::combat::CombatSettings{}, targets, damage_system);
+        game::combat::AbilitySystem warrior_abilities(
+            game::combat::CombatClass::Warrior, targets, damage_system);
+        game::combat::AbilitySystem mage_abilities(
+            game::combat::CombatClass::Mage, targets, damage_system);
+        game::combat::AbilitySystem archer_abilities(
+            game::combat::CombatClass::Archer, targets, damage_system);
+        game::combat::AbilitySystem* active_abilities = &warrior_abilities;
         game::combat::EntityId player_entity_id = game::combat::kInvalidEntity;
         {
             game::combat::CombatEntity player_entity;
@@ -400,12 +511,81 @@ int run_application()
         game::combat::CombatContext combat_context;
         combat.set_event_handler([&](const character::CombatEvent& event) {
             combat_system_stats.handle(event);
-            if (event.type == character::CombatEventType::AttackHit) {
-                (void)combat_system.on_attack_hit(combat_registry, combat_context);
+            if (event.type == character::CombatEventType::AttackHit &&
+                event.state != character::CombatState::Cast) {
+                (void)combat_system.on_attack_hit(
+                    combat_registry, combat_context, &collision_world);
             } else if (event.type == character::CombatEventType::AttackEnd) {
                 combat_system.on_swing_end();
             }
         });
+        const auto& weapons = game::items::weapon_catalog();
+        const game::items::WeaponDefinition* selected_weapon = &weapons.front();
+        std::optional<std::string_view> selected_weapon_animation;
+        const auto select_weapon = [&](std::size_t index) {
+            selected_weapon = &weapons[index];
+            active_abilities = selected_weapon->combat_class == game::combat::CombatClass::Mage
+                ? &mage_abilities
+                : selected_weapon->combat_class == game::combat::CombatClass::Archer
+                    ? &archer_abilities : &warrior_abilities;
+            selected_weapon_animation =
+                find_weapon_animation(*selected_weapon, body_model->animations);
+            std::vector<character::CombatActionDefinition> actions;
+            for (const std::string_view name : selected_weapon->attack_animations) {
+                if (name.empty() || !has_animation(body_model->animations, name)) {
+                    continue;
+                }
+                const animation::AnimationClip& clip = body_model->animations[
+                    find_clip_index(body_model->animations, name)];
+                const float duration = clip.duration;
+                actions.push_back({character::CombatState::Attack,
+                    std::string(name), duration, 1.0f,
+                    duration * 0.5f, 0.1f, 0.15f});
+            }
+            if (selected_weapon_animation &&
+                selected_weapon->combat_class == game::combat::CombatClass::Mage) {
+                const animation::AnimationClip& clip = body_model->animations[
+                    find_clip_index(body_model->animations, *selected_weapon_animation)];
+                const float duration = clip.duration;
+                actions.push_back({character::CombatState::Cast,
+                    std::string(*selected_weapon_animation), duration, 1.0f,
+                    duration * 0.5f, 0.1f, 0.15f});
+            }
+            combat.set_actions(std::move(actions));
+            if (!selected_weapon_animation) {
+                combat_system.set_auto_attack(false);
+            }
+            if (selected_weapon->type == game::items::WeaponType::Archer) {
+                const character::LocomotionAnimationSet longbow_clips{
+                    "Longbow_Idle", "Longbow_Walk_Forward", "Longbow_Walk_Backward",
+                    "Longbow_Walk_Left", "Longbow_Walk_Right", "Longbow_Run_Forward",
+                    "Longbow_Run_Backward", "Longbow_Run_Left", "Longbow_Run_Right"};
+                const std::array<std::string_view, 9> names{
+                    longbow_clips.idle, longbow_clips.walk_forward,
+                    longbow_clips.walk_backward, longbow_clips.walk_left,
+                    longbow_clips.walk_right, longbow_clips.run_forward,
+                    longbow_clips.run_backward, longbow_clips.run_left,
+                    longbow_clips.run_right};
+                if (std::all_of(names.begin(), names.end(),
+                        [&](std::string_view name) {
+                            return has_animation(body_model->animations, name);
+                        })) {
+                    controller.set_locomotion_animation_set(longbow_clips);
+                } else {
+                    controller.set_locomotion_animation_set(std::nullopt);
+                }
+            } else {
+                controller.set_locomotion_animation_set(std::nullopt);
+            }
+            std::cout << "[weapon] selected " << selected_weapon->name;
+            if (selected_weapon_animation) {
+                std::cout << " (animation: " << *selected_weapon_animation << ')';
+            } else {
+                std::cout << " (no bow attack animation available)";
+            }
+            std::cout << '\n';
+        };
+        select_weapon(0);
         bool previous_target_click = false;
         bool previous_right_down = false;
         double right_drag_distance = 0.0;
@@ -417,7 +597,11 @@ int run_application()
         double left_click_y = 0.0;
         float left_drag_movement_yaw = 0.0f;
         bool previous_tab = false;
+        bool previous_clear_target_key = false;
         bool previous_auto_attack_key = false;
+        bool previous_ability_two_key = false;
+        bool previous_ability_three_key = false;
+        std::array<bool, 5> previous_weapon_keys{};
         bool previous_debug_toggle = false;
         bool animation_debug = false;
         double next_debug_log = 0.0;
@@ -435,7 +619,7 @@ int run_application()
         std::cout << "[app] Movement prototype running. WASD moves relative to the camera; "
             << "always running; Space jumps; hold left or right mouse and drag to orbit freely (camera smoothly returns behind); right-click selects/engages or exits combat when not dragged; left click selects a target; Tab/Shift+Tab cycles targets; 1 toggles auto attack; F3 prints animation layer debug; "
             << "scroll zooms; [ and ] preview every animation; F1 toggles World Editor; "
-            << "Escape exits.\n"
+            << "4 Greatsword, 5 Archer, 6 Mage, 7 Sword+Shield, 8 Axe; Escape exits.\n"
             << "[editor] F1 toggles editor; RMB + mouse looks; WASD moves; Q/E descend/ascend; "
             << "Shift speeds up; Ctrl slows down; wheel adjusts speed; M/R/T select move/rotate/scale, "
             << "select an object and drag LMB to transform; X/Y/Z/U select axes, "
@@ -721,6 +905,17 @@ int run_application()
                 window.key_pressed(input_settings.previous_animation);
             const bool clip_forward = game_mode &&
                 window.key_pressed(input_settings.next_animation);
+            const std::array<platform::Key, 5> weapon_keys{
+                platform::Key::Digit4, platform::Key::Digit5,
+                platform::Key::Digit6, platform::Key::Digit7, platform::Key::Digit8};
+            for (std::size_t index = 0; index < weapon_keys.size(); ++index) {
+                const bool pressed = game_mode && !editor_ui.wants_keyboard_capture() &&
+                    window.key_pressed(weapon_keys[index]);
+                if (pressed && !previous_weapon_keys[index]) {
+                    select_weapon(index);
+                }
+                previous_weapon_keys[index] = pressed;
+            }
             if (clip_back && !previous_clip_back) {
                 preview_index = (preview_index + clips.size() - 1) % clips.size();
                 if (!controller.preview_animation(clips[preview_index].name)) {
@@ -793,7 +988,12 @@ int run_application()
                                 combat_registry.find(picked);
                             if (picked_entity != nullptr && picked_entity->alive() &&
                                 picked_entity->faction == game::combat::Faction::Hostile) {
-                                combat_system.set_auto_attack(true);
+                                if (selected_weapon_animation) {
+                                    combat_system.set_auto_attack(true);
+                                        } else {
+                                            std::cout << "[weapon] bow animation unavailable; "
+                                                << "use archer abilities instead\n";
+                                        }
                                 std::cout << "[combat] engaged " << picked_entity->name << '\n';
                             }
                         } else {
@@ -811,22 +1011,66 @@ int run_application()
                     window.key_pressed(platform::Key::Tab);
                 if (tab_pressed && !previous_tab) {
                     targets.cycle(combat_registry, player_entity, camera_yaw_forward,
-                        window.key_pressed(platform::Key::LeftShift));
+                        window.key_pressed(platform::Key::LeftShift) ||
+                        window.key_pressed(platform::Key::RightShift));
                 }
                 previous_tab = tab_pressed;
+                const bool clear_target_key = !editor_ui.wants_keyboard_capture() &&
+                    window.key_pressed(platform::Key::Digit0);
+                if (clear_target_key && !previous_clear_target_key) {
+                    targets.clear();
+                    combat_system.set_auto_attack(false);
+                }
+                previous_clear_target_key = clear_target_key;
                 const bool auto_attack_key = !editor_ui.wants_keyboard_capture() &&
                     window.key_pressed(platform::Key::Digit1);
                 if (auto_attack_key && !previous_auto_attack_key) {
-                    combat_system.toggle_auto_attack();
+                    if (selected_weapon_animation) {
+                        combat_system.toggle_auto_attack();
+                    } else {
+                        std::cout << "[weapon] auto attack unavailable without a bow animation\n";
+                    }
                     std::cout << "[combat] auto attack "
                         << (combat_system.auto_attack_enabled() ? "on" : "off") << '\n';
                 }
                 previous_auto_attack_key = auto_attack_key;
+                combat_context = {
+                    player_entity_id, player_entity.position, controller.yaw(), true};
+                const bool ability_two_key = !editor_ui.wants_keyboard_capture() &&
+                    window.key_pressed(platform::Key::Digit2);
+                if (ability_two_key && !previous_ability_two_key) {
+                    const auto result = active_abilities->cast(
+                        combat_registry, combat_context, &collision_world,
+                        std::string(selected_weapon->basic_ability_id));
+                    if (result.damage) {
+                        active_abilities->gain_resource(10.0f);
+                    }
+                    if (result.block == game::combat::AbilityBlock::None &&
+                        selected_weapon->combat_class == game::combat::CombatClass::Mage) {
+                        (void)combat.request(character::CombatState::Cast);
+                    }
+                    std::cout << "[combat] ability " << selected_weapon->basic_ability_id << ": "
+                        << game::combat::to_string(result.block) << '\n';
+                }
+                previous_ability_two_key = ability_two_key;
+                const bool ability_three_key = !editor_ui.wants_keyboard_capture() &&
+                    window.key_pressed(platform::Key::Digit3);
+                if (ability_three_key && !previous_ability_three_key) {
+                    const auto result = active_abilities->cast(
+                        combat_registry, combat_context, &collision_world,
+                        std::string(selected_weapon->power_ability_id));
+                    if (result.block == game::combat::AbilityBlock::None &&
+                        selected_weapon->combat_class == game::combat::CombatClass::Mage) {
+                        (void)combat.request(character::CombatState::Cast);
+                    }
+                    std::cout << "[combat] ability " << selected_weapon->power_ability_id << ": "
+                        << game::combat::to_string(result.block) << '\n';
+                }
+                previous_ability_three_key = ability_three_key;
 
                 // Combat only reads a snapshot of the player; it never touches movement input.
                 targets.update(combat_registry);
-                combat_context = {
-                    player_entity_id, player_entity.position, controller.yaw(), true};
+                active_abilities->update(delta_seconds);
                 combat_system.update(delta_seconds, combat_registry, combat_context,
                     &collision_world, [&combat] {
                         return combat.request(character::CombatState::Attack);
@@ -838,6 +1082,12 @@ int run_application()
                     delta_seconds, input,
                     left_camera_dragging ? left_drag_movement_yaw : camera.yaw(),
                     collision_world, &terrain);
+                player_entity.position = {
+                    player.transform().position[0],
+                    player.transform().position[1],
+                    player.transform().position[2]};
+                combat_context = {
+                    player_entity_id, player_entity.position, controller.yaw(), true};
                 combat.update();
                 selection.clear();
             }
@@ -913,8 +1163,10 @@ int run_application()
                 (void)camera.apply_input({
                     mouse_delta_x, mouse_delta_y, scroll_delta,
                     left_camera_dragging || right_camera_dragging});
+                const bool moving_character =
+                    std::abs(input.forward) > 0.001f || std::abs(input.strafe) > 0.001f;
                 camera.set_follow_target_yaw(
-                    left_camera_dragging || right_camera_dragging
+                    left_camera_dragging || right_camera_dragging || moving_character
                     ? std::nullopt
                     : std::optional<float>{controller.yaw() + 3.14159265f});
                 last_game_camera_pose = camera.update(
@@ -1199,8 +1451,14 @@ int run_application()
                 if (game_mode && target != nullptr) {
                     renderer.set_target_indicator(true, target->position, 0.9f,
                         target->alive() ? glm::vec3{1.0f, 0.2f, 0.15f} : glm::vec3{0.5f});
-                    std::string status = std::string("Auto Attack: ") +
-                        (combat_system.auto_attack_enabled() ? "ON" : "OFF (press 1)");
+                    const std::string auto_attack_status = selected_weapon_animation
+                        ? (combat_system.auto_attack_enabled() ? "ON" : "OFF (press 1)")
+                        : "OFF (no bow animation)";
+                    std::string status = "Weapon: " + std::string(selected_weapon->name) +
+                        " (4-7) | Auto Attack: " + auto_attack_status;
+                    status += " | 2 Basic | 3 Power (" +
+                        std::to_string(static_cast<int>(active_abilities->resource())) + " " +
+                        game::combat::to_string(active_abilities->resource_type()) + ')';
                     if (combat_system.auto_attack_enabled() &&
                         combat_system.last_block() != game::combat::AttackBlock::None) {
                         status += std::string(" - ") + game::combat::to_string(combat_system.last_block());

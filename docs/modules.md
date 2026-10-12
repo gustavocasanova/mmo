@@ -18,7 +18,8 @@ src/
   character/          corpo/modelo, aparência e atributos (main)
   equipment/          slots e attachments CPU (main)
   game/
-    characters/       Character: posição, orientação e movimento
+    combat/              entidades, alvos, dano, auto-ataque e habilidades CPU
+    characters/          Character: posição, orientação e movimento
     items/            ItemDefinition e ItemStack
     world/            limites de movimento do protótipo
     client/           DemoScene e CharacterVisual: aparência e animação

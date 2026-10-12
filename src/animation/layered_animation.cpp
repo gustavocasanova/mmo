@@ -111,6 +111,56 @@ std::vector<std::string> BoneMask::active_bone_names(const Skeleton& skeleton) c
     return names;
 }
 
+void replace_masked_channels(
+    AnimationClip& target, const AnimationClip& source, const BoneMask& mask)
+{
+    if (mask.size() == 0 || !target.is_valid(mask.size()) ||
+        !source.is_valid(mask.size()) || target.duration <= 0.0f || source.duration <= 0.0f) {
+        throw std::invalid_argument("masked animation replacement requires valid clips and mask");
+    }
+
+    const auto retime = [scale = target.duration / source.duration](auto& keyframes) {
+        for (float& time : keyframes.times) {
+            time *= scale;
+        }
+    };
+    for (const AnimationChannel& source_channel : source.channels) {
+        const float weight = mask.weight(source_channel.bone_index);
+        if (weight == 0.0f) {
+            continue;
+        }
+        if (weight != 1.0f) {
+            throw std::invalid_argument(
+                "masked animation channel replacement requires binary mask weights");
+        }
+
+        AnimationChannel replacement = source_channel;
+        retime(replacement.translations);
+        retime(replacement.rotations);
+        retime(replacement.scales);
+        const auto target_channel = std::find_if(target.channels.begin(), target.channels.end(),
+            [&source_channel](const AnimationChannel& channel) {
+                return channel.bone_index == source_channel.bone_index;
+            });
+        if (target_channel == target.channels.end()) {
+            target.channels.push_back(std::move(replacement));
+            continue;
+        }
+        if (!replacement.translations.times.empty()) {
+            target_channel->translations = std::move(replacement.translations);
+        }
+        if (!replacement.rotations.times.empty()) {
+            target_channel->rotations = std::move(replacement.rotations);
+        }
+        if (!replacement.scales.times.empty()) {
+            target_channel->scales = std::move(replacement.scales);
+        }
+    }
+    if (!target.is_valid(mask.size())) {
+        throw std::runtime_error("masked animation replacement produced an invalid clip");
+    }
+}
+
 AnimationMixer::AnimationMixer(BoneMask upper_body_mask)
     : mask_(std::move(upper_body_mask))
 {
