@@ -1,6 +1,6 @@
 #include "scene/camera_controller.hpp"
 
-#include "game/world/collision_world.hpp"
+#include "world/collision_world.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -112,7 +112,7 @@ void CameraController::set_follow_target_yaw(std::optional<float> target_yaw)
 CameraPose CameraController::update(
     float delta_seconds,
     const CameraTarget& target,
-    const game::world::CollisionWorld* collision_world)
+    const world::CollisionWorld* collision_world)
 {
     const float elapsed = std::max(delta_seconds, 0.0f);
     if (follow_target_yaw_) {

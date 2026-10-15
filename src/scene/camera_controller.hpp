@@ -6,7 +6,7 @@
 
 #include <optional>
 
-namespace mmo::game::world {
+namespace mmo::world {
 class CollisionWorld;
 }
 
@@ -56,7 +56,7 @@ public:
     [[nodiscard]] CameraPose update(
         float delta_seconds,
         const CameraTarget& target,
-        const game::world::CollisionWorld* collision_world = nullptr);
+        const world::CollisionWorld* collision_world = nullptr);
     [[nodiscard]] const CameraSettings& settings() const;
     [[nodiscard]] float yaw() const;
     [[nodiscard]] float pitch() const;

@@ -14,6 +14,12 @@ struct StaticModelGeometry {
     glm::vec3 maximum{0.0f};
 };
 
-[[nodiscard]] StaticModelGeometry build_static_model_geometry(const Model& model);
+enum class StaticModelOrigin {
+    BoundsCenter,
+    AssetPivot,
+};
+
+[[nodiscard]] StaticModelGeometry build_static_model_geometry(
+    const Model& model, StaticModelOrigin origin = StaticModelOrigin::BoundsCenter);
 
 }

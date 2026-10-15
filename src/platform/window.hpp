@@ -22,6 +22,7 @@ enum class Key {
     F1,
     F2,
     F3,
+    F4,
     Tab,
     L,
     LeftControl,
@@ -44,6 +45,7 @@ enum class Key {
     Digit8,
     Digit9,
     T,
+    I,
 };
 
 class GlfwRuntime {

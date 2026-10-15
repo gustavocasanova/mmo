@@ -2,8 +2,8 @@
 
 #include "assets/model.hpp"
 #include "animation/skeleton.hpp"
-#include "game/world/collision_world.hpp"
-#include "game/world/terrain.hpp"
+#include "world/collision_world.hpp"
+#include "world/terrain.hpp"
 #include "scene/camera.hpp"
 
 #include <memory>
@@ -36,17 +36,26 @@ enum class GizmoMode {
     scale,
 };
 
-struct CharacterPlacement {
+struct Placement {
     float x;
     float y;
     float z;
     float yaw;
 };
 
-struct EnemyRenderInstance {
-    CharacterPlacement placement;
-    glm::vec3 tint;
+// Rigid registered static model, positioned in the skinned instance's model space.
+struct RigidAttachment {
+    std::string asset_path;
+    animation::Matrix4 transform;
+};
+
+// One drawable copy of the skinned model. The renderer does not know whether it
+// is a player, an NPC or an enemy; spans must stay valid until the next set call.
+struct SkinnedInstance {
+    Placement placement;
+    glm::vec3 tint{1.0f};
     std::span<const animation::Matrix4> skin_matrices;
+    std::span<const RigidAttachment> attachments;
 };
 
 class Renderer {
@@ -56,21 +65,23 @@ public:
     Renderer& operator=(const Renderer&) = delete;
     ~Renderer();
 
-    void set_character_model(const assets::Model& model);
+    void set_skinned_model(const assets::Model& model);
+    [[nodiscard]] ModelBounds register_static_model(
+        const std::string& asset_path,
+        const assets::Model& model);
     [[nodiscard]] ModelBounds register_editor_model(
         const std::string& asset_path,
         const assets::Model& model);
-    void set_skinning_matrices(std::span<const animation::Matrix4> matrices);
-    // Extra skinned instances of the character mesh (enemies, NPCs).
-    void set_enemies(std::span<const EnemyRenderInstance> enemies);
+    // Copies the instances; attachments must reference registered static models.
+    void set_skinned_instances(std::span<const SkinnedInstance> instances);
     // Ground ring under the current target; decoupled from any gameplay system.
     void set_target_indicator(bool visible, glm::vec3 center, float radius, glm::vec3 color);
     void set_terrain(
-        const game::world::Terrain& terrain,
+        const world::Terrain& terrain,
         glm::vec2 streaming_center = glm::vec2{0.0f},
         int streaming_radius_chunks = 10);
     void set_brush_cursor(
-        const game::world::Terrain& terrain,
+        const world::Terrain& terrain,
         glm::vec2 center,
         float radius,
         bool visible);
@@ -78,9 +89,8 @@ public:
     void render(
         int framebuffer_width,
         int framebuffer_height,
-        const CharacterPlacement& player,
         const scene::CameraPose& camera,
-        const game::world::CollisionWorld& collision_world,
+        const world::CollisionWorld& collision_world,
         std::optional<std::uint64_t> selected_object = std::nullopt,
         std::span<const RenderBox> editor_boxes = {},
         bool show_editor_gizmo = false,

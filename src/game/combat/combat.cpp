@@ -546,6 +546,27 @@ void CombatSystem::set_auto_attack(bool enabled)
     auto_attack_ = enabled;
 }
 
+bool WeaponStats::valid() const
+{
+    return std::isfinite(damage) && damage >= 0.0f &&
+        std::isfinite(attack_interval) && attack_interval > 0.0f &&
+        std::isfinite(attack_range) && attack_range > 0.0f;
+}
+
+void CombatSystem::set_weapon(std::optional<WeaponStats> weapon)
+{
+    if (weapon && !weapon->valid()) {
+        throw std::invalid_argument("weapon stats must be finite with positive interval and range");
+    }
+    weapon_ = weapon;
+}
+
+WeaponStats CombatSystem::active_stats() const
+{
+    return weapon_.value_or(
+        WeaponStats{settings_.damage, settings_.attack_speed, settings_.attack_range});
+}
+
 AttackBlock CombatSystem::evaluate(const EntityRegistry& registry, const CombatContext& context,
     const world::CollisionWorld* world) const
 {
@@ -577,7 +598,8 @@ AttackBlock CombatSystem::evaluate_target(const EntityRegistry& registry,
     if (check_cooldown && timer_ > 0.0f) {
         return AttackBlock::OnCooldown;
     }
-    if (horizontal_distance(target->position, context.player_position) > settings_.attack_range) {
+    if (horizontal_distance(target->position, context.player_position) >
+        active_stats().attack_range) {
         return AttackBlock::OutOfRange;
     }
     const float angle = std::abs(wrap_angle(
@@ -618,7 +640,7 @@ void CombatSystem::update(float delta_seconds, const EntityRegistry& registry,
         if (last_block_ == AttackBlock::None && request_swing && request_swing()) {
             swinging_ = true;
             swing_target_ = targets_.current();
-            timer_ = settings_.attack_speed;
+            timer_ = active_stats().attack_interval;
         }
     }
     if (!context.player_alive) {
@@ -647,7 +669,7 @@ std::optional<DamageEvent> CombatSystem::on_attack_hit(
     if (last_block_ != AttackBlock::None) {
         return std::nullopt;
     }
-    return damage_.apply(registry, context.player_id, swing_target_, settings_.damage);
+    return damage_.apply(registry, context.player_id, swing_target_, active_stats().damage);
 }
 
 void CombatSystem::on_swing_end()

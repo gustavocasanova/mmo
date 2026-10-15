@@ -57,6 +57,8 @@ public:
     void set_actions(std::vector<CombatActionDefinition> actions);
     // False when the action is unknown, has no clip, or another action is still in progress.
     bool request(CombatState state);
+    // Uses the equipped object through Equipment, without item IDs or downcasts.
+    bool request_primary_attack();
     void update();
 
     [[nodiscard]] CombatState state() const;
@@ -66,6 +68,8 @@ public:
 private:
     static constexpr std::size_t kCombatStateCount =
         static_cast<std::size_t>(CombatState::Cast) + 1;
+
+    bool play_action(const CombatActionDefinition& action);
 
     Character& character_;
     std::vector<CombatActionDefinition> actions_;

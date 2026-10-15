@@ -2,7 +2,7 @@
 
 #include "animation/animation_controller.hpp"
 #include "character/character_body.hpp"
-#include "equipment/equipment.hpp"
+#include "equipment/equipment_manager.hpp"
 
 #include <array>
 #include <cstdint>

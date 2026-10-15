@@ -1,0 +1,429 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "MMO wooden training sword generator"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "WoodenSword_GripPivot",
+      "mesh": 0
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Wooden training sword",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1
+          },
+          "material": 0,
+          "mode": 4
+        },
+        {
+          "attributes": {
+            "POSITION": 2,
+            "NORMAL": 3
+          },
+          "material": 1,
+          "mode": 4
+        },
+        {
+          "attributes": {
+            "POSITION": 4,
+            "NORMAL": 5
+          },
+          "material": 2,
+          "mode": 4
+        },
+        {
+          "attributes": {
+            "POSITION": 6,
+            "NORMAL": 7
+          },
+          "material": 3,
+          "mode": 4
+        },
+        {
+          "attributes": {
+            "POSITION": 8,
+            "NORMAL": 9
+          },
+          "material": 4,
+          "mode": 4
+        },
+        {
+          "attributes": {
+            "POSITION": 10,
+            "NORMAL": 11
+          },
+          "material": 5,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "Oak face",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.65,
+          0.38,
+          0.16,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.95
+      }
+    },
+    {
+      "name": "Fresh bevel",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.88,
+          0.61,
+          0.31,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.95
+      }
+    },
+    {
+      "name": "End grain",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.47,
+          0.25,
+          0.09,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.95
+      }
+    },
+    {
+      "name": "Walnut hilt",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.29,
+          0.13,
+          0.045,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.95
+      }
+    },
+    {
+      "name": "Carved grip",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.42,
+          0.22,
+          0.085,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.95
+      }
+    },
+    {
+      "name": "Wood grain",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.49,
+          0.265,
+          0.1,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.95
+      }
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "wooden_sword.bin",
+      "byteLength": 20160
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 504,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 504,
+      "byteLength": 504,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1008,
+      "byteLength": 576,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1584,
+      "byteLength": 576,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 2160,
+      "byteLength": 2232,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 4392,
+      "byteLength": 2232,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 6624,
+      "byteLength": 5544,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 12168,
+      "byteLength": 5544,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 17712,
+      "byteLength": 792,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 18504,
+      "byteLength": 792,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 19296,
+      "byteLength": 432,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 19728,
+      "byteLength": 432,
+      "target": 34962
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 42,
+      "type": "VEC3",
+      "min": [
+        -0.054,
+        0.125,
+        -0.022
+      ],
+      "max": [
+        0.054,
+        0.835,
+        0.022
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 42,
+      "type": "VEC3",
+      "min": [
+        0.0,
+        -1.0,
+        -1.0
+      ],
+      "max": [
+        0.0,
+        0.06880209161537812,
+        1.0
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 48,
+      "type": "VEC3",
+      "min": [
+        -0.054,
+        0.125,
+        -0.022
+      ],
+      "max": [
+        0.054,
+        0.835,
+        0.022
+      ]
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "count": 48,
+      "type": "VEC3",
+      "min": [
+        -0.8543939945385874,
+        0.0014993795567681963,
+        -0.8086426564115716
+      ],
+      "max": [
+        0.8543939945385874,
+        0.24940149640115974,
+        0.8086426564115716
+      ]
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "count": 186,
+      "type": "VEC3",
+      "min": [
+        -0.145,
+        -0.125,
+        -0.036
+      ],
+      "max": [
+        0.145,
+        0.835,
+        0.036
+      ]
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5126,
+      "count": 186,
+      "type": "VEC3",
+      "min": [
+        -0.9999937348854111,
+        0.003539800831452786,
+        0.0
+      ],
+      "max": [
+        0.9999937348854111,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5126,
+      "count": 462,
+      "type": "VEC3",
+      "min": [
+        -0.145,
+        -0.16,
+        -0.036
+      ],
+      "max": [
+        0.145,
+        0.13,
+        0.036
+      ]
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5126,
+      "count": 462,
+      "type": "VEC3",
+      "min": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "max": [
+        1.0,
+        -0.0,
+        1.0
+      ]
+    },
+    {
+      "bufferView": 8,
+      "componentType": 5126,
+      "count": 66,
+      "type": "VEC3",
+      "min": [
+        -0.026,
+        -0.125,
+        -0.026
+      ],
+      "max": [
+        0.026,
+        0.09,
+        0.026
+      ]
+    },
+    {
+      "bufferView": 9,
+      "componentType": 5126,
+      "count": 66,
+      "type": "VEC3",
+      "min": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "max": [
+        1.0,
+        -0.0,
+        1.0
+      ]
+    },
+    {
+      "bufferView": 10,
+      "componentType": 5126,
+      "count": 36,
+      "type": "VEC3",
+      "min": [
+        -0.024,
+        0.2,
+        -0.0223
+      ],
+      "max": [
+        0.025,
+        0.66,
+        0.0223
+      ]
+    },
+    {
+      "bufferView": 11,
+      "componentType": 5126,
+      "count": 36,
+      "type": "VEC3",
+      "min": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "max": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  ]
+}

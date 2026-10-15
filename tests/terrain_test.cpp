@@ -1,4 +1,4 @@
-#include "game/world/terrain.hpp"
+#include "world/terrain.hpp"
 
 #include <glm/geometric.hpp>
 
@@ -20,7 +20,7 @@ void check(bool condition, const char* message)
 
 void test_brush_shapes_and_height_sampling()
 {
-    using namespace mmo::game::world;
+    using namespace mmo::world;
     Terrain terrain;
     check(terrain.apply_brush({0.0f, 0.0f}, 4.0f, 2.0f, 1.0f, TerrainBrush::raise),
         "raise brush did not modify terrain");
@@ -51,7 +51,7 @@ void test_brush_shapes_and_height_sampling()
 
 void test_mesh_and_ray_intersection()
 {
-    using namespace mmo::game::world;
+    using namespace mmo::world;
     Terrain terrain;
     glm::vec3 hit;
     const auto center_chunks = terrain.chunks_near({0.0f, 0.0f}, 0);
@@ -109,7 +109,7 @@ void test_mesh_and_ray_intersection()
 
 void test_legacy_heightmap_loads_into_center_of_expanded_world()
 {
-    using namespace mmo::game::world;
+    using namespace mmo::world;
     std::ostringstream serialized;
     serialized << "MMO_TERRAIN 1 97 97\n";
     for (int index = 0; index < 97 * 97; ++index) {
@@ -126,7 +126,7 @@ void test_legacy_heightmap_loads_into_center_of_expanded_world()
 
 void test_material_paint_blends_and_updates_chunk_revision()
 {
-    using namespace mmo::game::world;
+    using namespace mmo::world;
     Terrain terrain;
     const int grid_x = static_cast<int>(
         (0.0f + Terrain::kHalfExtent) / Terrain::kSpacing);
@@ -158,7 +158,7 @@ void test_material_paint_blends_and_updates_chunk_revision()
 
 void test_save_load_round_trip()
 {
-    using namespace mmo::game::world;
+    using namespace mmo::world;
     const std::filesystem::path path =
         std::filesystem::temp_directory_path() / "mmo-terrain-test.mmoterrain";
     try {
@@ -187,7 +187,7 @@ void test_save_load_round_trip()
 
 void test_region_storage_evicts_and_reloads_cpu_pages()
 {
-    using namespace mmo::game::world;
+    using namespace mmo::world;
     const std::filesystem::path directory =
         std::filesystem::temp_directory_path() / "mmo-terrain-region-cache-test";
     std::error_code ignored;

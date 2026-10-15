@@ -6,7 +6,7 @@
 namespace mmo::editor {
 
 EditorSnapshot capture_snapshot(
-    const game::world::Terrain& terrain,
+    const world::Terrain& terrain,
     const SelectionManager& selection)
 {
     return {terrain, selection.objects(), selection.selected()};
@@ -69,7 +69,7 @@ void EditorHistory::clear()
 }
 
 bool EditorHistory::undo(
-    game::world::Terrain& terrain,
+    world::Terrain& terrain,
     SelectionManager& selection)
 {
     if (!can_undo()) {
@@ -83,7 +83,7 @@ bool EditorHistory::undo(
 }
 
 bool EditorHistory::redo(
-    game::world::Terrain& terrain,
+    world::Terrain& terrain,
     SelectionManager& selection)
 {
     if (!can_redo()) {

@@ -9,7 +9,7 @@
 
 #include <glm/vec3.hpp>
 
-#include "game/world/collision_world.hpp"
+#include "world/collision_world.hpp"
 
 // Gameplay-side combat: entities, tab-targeting, auto attack and damage.
 // Nothing here knows about animation or rendering; the client connects them through events.
@@ -116,6 +116,15 @@ const char* to_string(CombatState state);
 const char* to_string(TargetState state);
 const char* to_string(AttackBlock reason);
 
+// What a weapon contributes to the auto attack. Items provide it as plain data.
+struct WeaponStats {
+    float damage = 0.0f;
+    float attack_interval = 0.0f;  // seconds between swings
+    float attack_range = 0.0f;
+
+    [[nodiscard]] bool valid() const;
+};
+
 enum class CombatClass { Warrior, Mage, Archer };
 enum class ResourceType { Rage, Mana, Focus };
 enum class AbilityTarget { Hostile, Self };
@@ -192,6 +201,7 @@ private:
 };
 
 struct CombatSettings {
+    // Unarmed values; an equipped weapon replaces them through CombatSystem::set_weapon.
     float attack_range = 2.5f;
     float attack_speed = 1.5f;  // seconds between swings
     float damage = 20.0f;
@@ -223,6 +233,11 @@ public:
     [[nodiscard]] AttackBlock last_block() const { return last_block_; }
 
     void set_auto_attack(bool enabled);
+    // std::nullopt returns to the unarmed values of CombatSettings. Throws on invalid stats.
+    void set_weapon(std::optional<WeaponStats> weapon);
+    [[nodiscard]] const std::optional<WeaponStats>& weapon() const { return weapon_; }
+    // Stats used by the next swing: the weapon's, or the unarmed settings.
+    [[nodiscard]] WeaponStats active_stats() const;
     void toggle_auto_attack() { set_auto_attack(!auto_attack_); }
 
     [[nodiscard]] AttackBlock evaluate(const EntityRegistry& registry, const CombatContext& context,
@@ -244,6 +259,7 @@ private:
         bool check_cooldown) const;
 
     CombatSettings settings_;
+    std::optional<WeaponStats> weapon_;
     TargetSystem& targets_;
     DamageSystem& damage_;
     bool auto_attack_ = false;

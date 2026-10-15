@@ -28,7 +28,7 @@ void validate_objects(const std::vector<SelectableObject>& objects)
 
 void WorldDocument::save(
     const std::filesystem::path& path,
-    const game::world::Terrain& terrain,
+    const world::Terrain& terrain,
     const std::vector<SelectableObject>& objects)
 {
     if (path.empty()) {

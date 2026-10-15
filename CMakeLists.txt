@@ -39,27 +39,61 @@ set_target_properties(glad PROPERTIES
     C_STANDARD 11
     C_STANDARD_REQUIRED ON)
 
-add_library(mmo_character STATIC
+# Layers (lower layers never link or include higher ones; LayeringTest checks includes):
+#   engine:       mmo_core, mmo_world, mmo_animation, mmo_assets, mmo_equipment,
+#                 mmo_character, mmo_scene, mmo_editor  (+ renderer/platform in mmo_client)
+#   game rules:   mmo_game          -> mmo_core, mmo_world, GLM only; what a server links
+#   game client:  mmo_presentation  -> mmo_game + engine; item visuals and loadout mirroring
+#   composition:  mmo_client
+
+add_library(mmo_core STATIC
+    src/core/key_value_file.cpp)
+target_include_directories(mmo_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_compile_features(mmo_core PUBLIC cxx_std_20)
+
+add_library(mmo_world STATIC
+    src/world/collision_world.cpp
+    src/world/terrain.cpp)
+target_include_directories(mmo_world PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_compile_features(mmo_world PUBLIC cxx_std_20)
+target_link_libraries(mmo_world PUBLIC glm::glm)
+
+add_library(mmo_animation STATIC
     src/animation/animation_controller.cpp
     src/animation/skeleton.cpp
-    src/animation/layered_animation.cpp
-    src/character/combat.cpp
+    src/animation/layered_animation.cpp)
+target_include_directories(mmo_animation PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_compile_features(mmo_animation PUBLIC cxx_std_20)
+target_link_libraries(mmo_animation PUBLIC glm::glm)
+
+add_library(mmo_assets STATIC
     src/assets/gltf_model_loader.cpp
     src/assets/model.cpp
-    src/assets/static_model_geometry.cpp
+    src/assets/static_model_geometry.cpp)
+target_include_directories(mmo_assets PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(mmo_assets PUBLIC mmo_animation PRIVATE fastgltf::fastgltf)
+
+add_library(mmo_equipment STATIC
+    src/equipment/equipment_manager.cpp
+    src/equipment/attachment_pose.cpp
+    src/equipment/weapon.cpp)
+target_include_directories(mmo_equipment PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(mmo_equipment PUBLIC mmo_animation)
+
+add_library(mmo_character STATIC
+    src/character/combat.cpp
     src/character/character.cpp
     src/character/character_controller.cpp
     src/character/character_body.cpp
-    src/character/character_model.cpp
-    src/equipment/equipment.cpp
-    src/game/combat/combat.cpp
-    src/game/world/collision_world.cpp
-    src/game/world/terrain.cpp
-)
-target_include_directories(mmo_character PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_compile_features(mmo_character PUBLIC cxx_std_20)
-target_link_libraries(mmo_character PUBLIC glm::glm PRIVATE fastgltf::fastgltf)
+    src/character/character_model.cpp)
+target_include_directories(mmo_character PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(mmo_character PUBLIC mmo_assets mmo_equipment mmo_world)
+
+add_library(mmo_scene STATIC
+    src/scene/camera.cpp
+    src/scene/camera_controller.cpp)
+target_include_directories(mmo_scene PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(mmo_scene PUBLIC mmo_world)
 
 add_library(mmo_editor STATIC
     src/editor/asset_database.cpp
@@ -68,22 +102,35 @@ add_library(mmo_editor STATIC
     src/editor/selection.cpp
     src/editor/world_document.cpp
     src/editor/world_editor.cpp)
-target_include_directories(mmo_editor PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_compile_features(mmo_editor PUBLIC cxx_std_20)
-target_link_libraries(mmo_editor PUBLIC glm::glm mmo_character)
+target_include_directories(mmo_editor PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(mmo_editor PUBLIC mmo_scene)
+
+add_library(mmo_game STATIC
+    src/game/combat/combat.cpp
+    src/game/items/item_catalog.cpp
+    src/game/items/inventory.cpp)
+target_include_directories(mmo_game PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(mmo_game PUBLIC mmo_core mmo_world glm::glm)
+
+add_library(mmo_presentation STATIC
+    src/presentation/item_visuals.cpp)
+target_include_directories(mmo_presentation PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(mmo_presentation PUBLIC mmo_game mmo_equipment)
 
 add_executable(mmo_client
     src/apps/client/main.cpp
     src/apps/client/application.cpp
+    src/apps/client/character_setup.cpp
+    src/apps/client/demo_enemies.cpp
+    src/apps/client/inventory_window.cpp
+    src/apps/client/player_items.cpp
     src/apps/client/target_frame.cpp
+    src/presentation/equipment_presenter.cpp
     src/editor/editor_ui.cpp
     src/platform/window.cpp
     src/renderer/renderer.cpp
     src/renderer/opengl/mesh.cpp
     src/renderer/opengl/shader.cpp
-    src/scene/camera.cpp
-    src/scene/camera_controller.cpp
 )
 
 target_include_directories(mmo_client PRIVATE
@@ -94,50 +141,43 @@ target_link_libraries(mmo_client PRIVATE
     glm::glm
     glad
     mmo_character
+    mmo_game
+    mmo_presentation
+    mmo_scene
     mmo_editor
     imgui::imgui)
 
+set(MMO_WARNING_TARGETS
+    mmo_core mmo_world mmo_animation mmo_assets mmo_equipment mmo_character
+    mmo_scene mmo_editor mmo_game mmo_presentation mmo_client)
+
 if(BUILD_TESTING)
-    add_executable(mmo_character_tests
-        tests/character_equipment_test.cpp)
-    target_link_libraries(mmo_character_tests PRIVATE mmo_character)
-    add_test(NAME CharacterEquipmentTest COMMAND mmo_character_tests)
-    set_tests_properties(CharacterEquipmentTest PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+    function(mmo_add_test name source)
+        string(MAKE_C_IDENTIFIER "${name}" target)
+        set(target "mmo_test_${target}")
+        add_executable(${target} ${source})
+        target_link_libraries(${target} PRIVATE ${ARGN})
+        add_test(NAME ${name} COMMAND ${target})
+        # Tests that read content/ or the UAL rig run from the repository root.
+        set_tests_properties(${name} PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        list(APPEND MMO_WARNING_TARGETS ${target})
+        set(MMO_WARNING_TARGETS "${MMO_WARNING_TARGETS}" PARENT_SCOPE)
+    endfunction()
 
-    add_executable(mmo_camera_tests
-        tests/camera_tests.cpp
-        src/scene/camera.cpp
-        src/scene/camera_controller.cpp)
-    target_include_directories(mmo_camera_tests PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src")
-    target_link_libraries(mmo_camera_tests PRIVATE glm::glm)
-    target_link_libraries(mmo_camera_tests PRIVATE mmo_character)
-    target_compile_features(mmo_camera_tests PRIVATE cxx_std_20)
-    add_test(NAME ThirdPersonCameraTest COMMAND mmo_camera_tests)
+    mmo_add_test(WoodenSwordTest tests/wooden_sword_test.cpp mmo_character mmo_presentation)
+    mmo_add_test(ItemRulesTest tests/item_rules_test.cpp mmo_game)
+    mmo_add_test(CharacterEquipmentTest tests/character_equipment_test.cpp mmo_character)
+    mmo_add_test(ThirdPersonCameraTest tests/camera_tests.cpp mmo_scene)
+    mmo_add_test(CharacterControllerTest tests/character_controller_tests.cpp mmo_character)
+    mmo_add_test(AnimationLayersTest tests/animation_layers_test.cpp mmo_animation)
+    mmo_add_test(CombatTest tests/combat_test.cpp mmo_game)
+    mmo_add_test(TerrainTest tests/terrain_test.cpp mmo_world)
+    mmo_add_test(WorldEditorModeTest tests/world_editor_mode_test.cpp mmo_editor mmo_assets)
 
-    add_executable(mmo_controller_tests
-        tests/character_controller_tests.cpp)
-    target_link_libraries(mmo_controller_tests PRIVATE mmo_character)
-    add_test(NAME CharacterControllerTest COMMAND mmo_controller_tests)
-    set_tests_properties(CharacterControllerTest PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
-
-    add_executable(mmo_animation_layers_tests tests/animation_layers_test.cpp)
-    target_link_libraries(mmo_animation_layers_tests PRIVATE mmo_character)
-    add_test(NAME AnimationLayersTest COMMAND mmo_animation_layers_tests)
-
-    add_executable(mmo_combat_tests tests/combat_test.cpp)
-    target_link_libraries(mmo_combat_tests PRIVATE mmo_character)
-    add_test(NAME CombatTest COMMAND mmo_combat_tests)
-
-    add_executable(mmo_terrain_tests tests/terrain_test.cpp)
-    target_link_libraries(mmo_terrain_tests PRIVATE mmo_character)
-    add_test(NAME TerrainTest COMMAND mmo_terrain_tests)
-
-    add_executable(mmo_world_editor_tests tests/world_editor_mode_test.cpp)
-    target_link_libraries(mmo_world_editor_tests PRIVATE mmo_editor mmo_character)
-    add_test(NAME WorldEditorModeTest COMMAND mmo_world_editor_tests)
+    add_test(NAME LayeringTest
+        COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_layering.cmake)
 endif()
 
 if(WIN32)
@@ -145,18 +185,9 @@ if(WIN32)
 endif()
 
 if(MSVC)
-    target_compile_options(mmo_client PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
-    target_compile_options(mmo_character PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
-    target_compile_options(mmo_editor PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
-    if(BUILD_TESTING)
-        target_compile_options(mmo_character_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
-        target_compile_options(mmo_camera_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
-        target_compile_options(mmo_controller_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
-        target_compile_options(mmo_animation_layers_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
-        target_compile_options(mmo_combat_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
-        target_compile_options(mmo_terrain_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
-        target_compile_options(mmo_world_editor_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
-    endif()
+    foreach(target IN LISTS MMO_WARNING_TARGETS)
+        target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
+    endforeach()
     target_compile_options(glad PRIVATE /W3 /utf-8)
 endif()
 
