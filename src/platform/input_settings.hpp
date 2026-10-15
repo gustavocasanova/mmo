@@ -10,7 +10,6 @@ struct InputSettings {
     Key strafe_left = Key::A;
     Key strafe_right = Key::D;
     Key jump = Key::Space;
-    Key run = Key::LeftShift;
     Key previous_animation = Key::LeftBracket;
     Key next_animation = Key::RightBracket;
 };

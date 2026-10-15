@@ -2,6 +2,8 @@
 
 #include "character/character.hpp"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -52,6 +54,7 @@ public:
     CombatController(Character& character, std::vector<CombatActionDefinition> actions);
 
     void set_event_handler(EventHandler handler);
+    void set_actions(std::vector<CombatActionDefinition> actions);
     // False when the action is unknown, has no clip, or another action is still in progress.
     bool request(CombatState state);
     // Uses the equipped object through Equipment, without item IDs or downcasts.
@@ -63,10 +66,14 @@ public:
     [[nodiscard]] float attack_duration() const;
 
 private:
+    static constexpr std::size_t kCombatStateCount =
+        static_cast<std::size_t>(CombatState::Cast) + 1;
+
     bool play_action(const CombatActionDefinition& action);
 
     Character& character_;
     std::vector<CombatActionDefinition> actions_;
+    std::array<std::size_t, kCombatStateCount> next_action_indices_{};
     EventHandler handler_;
     CombatState state_ = CombatState::None;
 };

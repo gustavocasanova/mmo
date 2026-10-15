@@ -6,8 +6,10 @@
 #include "character/combat.hpp"
 #include "editor/editor_camera.hpp"
 #include "editor/asset_database.hpp"
+#include "editor/editor_history.hpp"
 #include "editor/editor_ui.hpp"
 #include "editor/selection.hpp"
+#include "editor/world_document.hpp"
 #include "editor/world_editor.hpp"
 #include "apps/client/character_setup.hpp"
 #include "apps/client/demo_enemies.hpp"
@@ -15,6 +17,7 @@
 #include "apps/client/player_items.hpp"
 #include "apps/client/target_frame.hpp"
 #include "game/combat/combat.hpp"
+#include "game/items/weapons.hpp"
 #include "presentation/equipment_presenter.hpp"
 #include "world/collision_world.hpp"
 #include "world/terrain.hpp"
@@ -24,12 +27,14 @@
 #include "scene/camera_controller.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -42,6 +47,7 @@ namespace mmo::app {
 namespace {
 
 constexpr char kTerrainPath[] = "content/worlds/demo.mmoterrain";
+constexpr char kWorldPath[] = "content/worlds/demo.mmoworld";
 constexpr char kItemsDirectory[] = "content/items";
 
 glm::vec3 cursor_ray(
@@ -68,11 +74,37 @@ glm::vec3 cursor_ray(
         forward + right * (screen_x * aspect * tangent) + up * (screen_y * tangent));
 }
 
+std::optional<std::string_view> find_weapon_animation(
+    const game::items::WeaponDefinition& weapon,
+    const std::vector<animation::AnimationClip>& clips)
+{
+    for (const std::string_view name : weapon.attack_animations) {
+        if (name.empty()) continue;
+        const auto clip = std::find_if(clips.begin(), clips.end(),
+            [name](const animation::AnimationClip& candidate) {
+                return candidate.name == name;
+            });
+        if (clip != clips.end()) return clip->name;
+    }
+    return std::nullopt;
+}
+
+bool has_animation(
+    const std::vector<animation::AnimationClip>& clips,
+    std::string_view name)
+{
+    return std::any_of(clips.begin(), clips.end(),
+        [name](const animation::AnimationClip& clip) {
+            return clip.name == name;
+        });
+}
+
 world::CollisionWorld make_demo_collision_world()
 {
     using world::CollisionBox;
+    const float half_extent = world::Terrain::kHalfExtent;
     return world::CollisionWorld(
-        {},
+        {-half_extent, half_extent, -half_extent, half_extent},
         {
             CollisionBox{{4.0f, 0.0f, -2.5f}, {4.6f, 3.0f, 2.5f}},
             CollisionBox{{-5.0f, 0.0f, -2.0f}, {-4.6f, 3.0f, 2.0f}},
@@ -111,13 +143,44 @@ int run_application()
         editor::WorldEditor world_editor;
         editor::EditorCamera editor_camera;
         world::Terrain terrain;
+        std::optional<editor::WorldDocumentData> startup_world;
+        const std::filesystem::path world_path{kWorldPath};
         const std::filesystem::path terrain_path{kTerrainPath};
-        if (std::filesystem::exists(terrain_path)) {
+        terrain.configure_region_storage(
+            std::filesystem::path{world_path.string() + ".regions"});
+        if (std::filesystem::exists(world_path)) {
+            startup_world = editor::WorldDocument::load(world_path);
+            terrain = startup_world->terrain;
+            std::cout << "[world] loaded " << world_path.string() << '\n';
+        } else if (std::filesystem::exists(terrain_path)) {
             terrain.load(terrain_path);
             std::cout << "[terrain] loaded " << terrain_path.string() << '\n';
         }
         world::CollisionWorld collision_world = make_demo_collision_world();
         editor::SelectionManager selection(make_demo_selectables(collision_world));
+        if (startup_world) {
+            selection.replace_objects(std::move(startup_world->objects));
+        }
+        editor::EditorHistory editor_history;
+        const auto rebuild_editor_collision = [&]() {
+            std::vector<world::CollisionBox> edited_boxes;
+            edited_boxes.reserve(selection.objects().size());
+            for (const editor::SelectableObject& object : selection.objects()) {
+                if (!object.asset_path.empty()) {
+                    continue;
+                }
+                const std::optional<editor::SelectionBounds> bounds =
+                    selection.bounds_for(object.id);
+                if (bounds) {
+                    edited_boxes.push_back({bounds->minimum, bounds->maximum});
+                }
+            }
+            collision_world = world::CollisionWorld(
+                collision_world.bounds(), std::move(edited_boxes));
+        };
+        if (startup_world) {
+            rebuild_editor_collision();
+        }
         const platform::InputSettings input_settings{};
 
         assets::GltfModelLoader model_loader;
@@ -126,9 +189,81 @@ int run_application()
         asset_database.refresh();
         std::cout << "[assets] indexed " << asset_database.entries().size()
             << " models and prefabs.\n";
+        const auto load_editor_models = [&]() {
+            for (const editor::SelectableObject& object : selection.objects()) {
+                if (object.asset_path.empty()) {
+                    continue;
+                }
+                const std::filesystem::path model_path =
+                    asset_database.resolve_model_path(object.asset_path);
+                assets::Model model = assets.load_model(model_path);
+                (void)renderer.register_editor_model(object.asset_path, model);
+            }
+        };
+        if (startup_world) {
+            load_editor_models();
+        }
+        const auto save_world = [&]() {
+            editor::WorldDocument::save(world_path, terrain, selection.objects());
+            editor_ui.set_status("Saved " + world_path.generic_string(), false);
+            std::cout << "[world] saved " << world_path.string() << '\n';
+        };
+        const auto load_world = [&]() {
+            if (std::filesystem::exists(world_path)) {
+                editor::WorldDocumentData loaded =
+                    editor::WorldDocument::load(world_path);
+                for (const editor::SelectableObject& object : loaded.objects) {
+                    if (object.asset_path.empty()) {
+                        continue;
+                    }
+                    assets::Model model = assets.load_model(
+                        asset_database.resolve_model_path(object.asset_path));
+                    (void)renderer.register_editor_model(object.asset_path, model);
+                }
+                terrain = std::move(loaded.terrain);
+                terrain.invalidate_render_chunks();
+                selection.replace_objects(std::move(loaded.objects));
+            } else if (std::filesystem::exists(terrain_path)) {
+                terrain.load(terrain_path);
+            } else {
+                throw std::runtime_error("no saved world or legacy terrain was found");
+            }
+            renderer.set_terrain(terrain);
+            rebuild_editor_collision();
+            editor_history.clear();
+            editor_ui.set_status("Loaded " +
+                (std::filesystem::exists(world_path)
+                    ? world_path.generic_string() : terrain_path.generic_string()), false);
+            std::cout << "[world] loaded "
+                << (std::filesystem::exists(world_path)
+                    ? world_path.string() : terrain_path.string()) << '\n';
+        };
         assets::Model loaded_model = assets.load_model(
             "Universal Animation Library[Standard]/Unreal-Godot/UAL1_Standard.glb");
         const std::size_t backward_walk_index = add_backward_walk_clip(loaded_model);
+        // Optional locally generated clips are not redistributed with the project.
+        const std::filesystem::path melee_animation_path{
+            "assets/animations/generated/melee_combat_ual.glb"};
+        if (std::filesystem::exists(melee_animation_path)) {
+            assets::append_animations(
+                loaded_model, assets.load_model(melee_animation_path));
+            compose_running_animations(loaded_model);
+        } else {
+            std::cout << "[animation] optional retargeted melee locomotion is missing; "
+                << "using built-in UAL locomotion. Run "
+                << "scripts/retarget_melee_animations.js with FBX2glTF to enable "
+                << "Human Melee combat movement.\n";
+        }
+        const std::filesystem::path weapon_animation_path{
+            "assets/animations/generated/weapon_animations_ual.glb"};
+        if (std::filesystem::exists(weapon_animation_path)) {
+            assets::append_animations(
+                loaded_model, assets.load_model(weapon_animation_path));
+        } else {
+            std::cout << "[animation] optional weapon animation pack is missing; "
+                << "run scripts/retarget_melee_animations.js with --weapon-packs "
+                << "to enable the imported attacks, longbow locomotion and running jump.\n";
+        }
         auto body_model = std::make_shared<const assets::Model>(std::move(loaded_model));
         character::Character player(body_model);
         bind_animations(player);
@@ -143,6 +278,13 @@ int run_application()
         game::combat::TargetSystem targets;
         game::combat::CombatSystem combat_system(
             game::combat::CombatSettings{}, targets, damage_system);
+        game::combat::AbilitySystem warrior_abilities(
+            game::combat::CombatClass::Warrior, targets, damage_system);
+        game::combat::AbilitySystem mage_abilities(
+            game::combat::CombatClass::Mage, targets, damage_system);
+        game::combat::AbilitySystem archer_abilities(
+            game::combat::CombatClass::Archer, targets, damage_system);
+        game::combat::AbilitySystem* active_abilities = &warrior_abilities;
         game::combat::EntityId player_entity_id = game::combat::kInvalidEntity;
         {
             game::combat::CombatEntity player_entity;
@@ -165,20 +307,97 @@ int run_application()
         game::combat::CombatContext combat_context;
         combat.set_event_handler([&](const character::CombatEvent& event) {
             combat_system_stats.handle(event);
-            if (event.type == character::CombatEventType::AttackHit) {
-                (void)combat_system.on_attack_hit(combat_registry, combat_context);
+            if (event.type == character::CombatEventType::AttackHit &&
+                event.state != character::CombatState::Cast) {
+                (void)combat_system.on_attack_hit(
+                    combat_registry, combat_context, &collision_world);
             } else if (event.type == character::CombatEventType::AttackEnd) {
                 combat_system.on_swing_end();
             }
         });
+        const auto& weapons = game::items::weapon_catalog();
+        const game::items::WeaponDefinition* selected_weapon = &weapons.front();
+        std::optional<std::string_view> selected_weapon_animation;
+        const auto select_weapon = [&](std::size_t index) {
+            selected_weapon = &weapons[index];
+            active_abilities = selected_weapon->combat_class == game::combat::CombatClass::Mage
+                ? &mage_abilities
+                : selected_weapon->combat_class == game::combat::CombatClass::Archer
+                    ? &archer_abilities : &warrior_abilities;
+            selected_weapon_animation =
+                find_weapon_animation(*selected_weapon, body_model->animations);
+            std::vector<character::CombatActionDefinition> actions;
+            for (const std::string_view name : selected_weapon->attack_animations) {
+                if (name.empty() || !has_animation(body_model->animations, name)) {
+                    continue;
+                }
+                const animation::AnimationClip& clip = body_model->animations[
+                    find_clip_index(body_model->animations, name)];
+                const float duration = clip.duration;
+                actions.push_back({character::CombatState::Attack,
+                    std::string(name), duration, 1.0f,
+                    duration * 0.5f, 0.1f, 0.15f});
+            }
+            if (selected_weapon_animation &&
+                selected_weapon->combat_class == game::combat::CombatClass::Mage) {
+                const animation::AnimationClip& clip = body_model->animations[
+                    find_clip_index(body_model->animations, *selected_weapon_animation)];
+                const float duration = clip.duration;
+                actions.push_back({character::CombatState::Cast,
+                    std::string(*selected_weapon_animation), duration, 1.0f,
+                    duration * 0.5f, 0.1f, 0.15f});
+            }
+            combat.set_actions(std::move(actions));
+            if (!selected_weapon_animation) {
+                combat_system.set_auto_attack(false);
+            }
+            if (selected_weapon->type == game::items::WeaponType::Archer) {
+                const character::LocomotionAnimationSet longbow_clips{
+                    "Longbow_Idle", "Longbow_Walk_Forward", "Longbow_Walk_Backward",
+                    "Longbow_Walk_Left", "Longbow_Walk_Right", "Longbow_Run_Forward",
+                    "Longbow_Run_Backward", "Longbow_Run_Left", "Longbow_Run_Right"};
+                const std::array<std::string_view, 9> names{
+                    longbow_clips.idle, longbow_clips.walk_forward,
+                    longbow_clips.walk_backward, longbow_clips.walk_left,
+                    longbow_clips.walk_right, longbow_clips.run_forward,
+                    longbow_clips.run_backward, longbow_clips.run_left,
+                    longbow_clips.run_right};
+                if (std::all_of(names.begin(), names.end(),
+                        [&](std::string_view name) {
+                            return has_animation(body_model->animations, name);
+                        })) {
+                    controller.set_locomotion_animation_set(longbow_clips);
+                } else {
+                    controller.set_locomotion_animation_set(std::nullopt);
+                }
+            } else {
+                controller.set_locomotion_animation_set(std::nullopt);
+            }
+            std::cout << "[weapon] selected " << selected_weapon->name;
+            if (selected_weapon_animation) {
+                std::cout << " (animation: " << *selected_weapon_animation << ')';
+            } else {
+                std::cout << " (no bow attack animation available)";
+            }
+            std::cout << '\n';
+        };
+        select_weapon(0);
         bool previous_target_click = false;
         bool previous_right_down = false;
         double right_drag_distance = 0.0;
-        float right_hold_time = 0.0f;
         double right_click_x = 0.0;
         double right_click_y = 0.0;
+        bool previous_left_camera_dragging = false;
+        double left_drag_distance = 0.0;
+        double left_click_x = 0.0;
+        double left_click_y = 0.0;
+        float left_drag_movement_yaw = 0.0f;
         bool previous_tab = false;
+        bool previous_clear_target_key = false;
         bool previous_auto_attack_key = false;
+        bool previous_ability_two_key = false;
+        bool previous_ability_three_key = false;
+        std::array<bool, 5> previous_weapon_keys{};
         bool previous_debug_toggle = false;
         bool animation_debug = false;
         double next_debug_log = 0.0;
@@ -186,6 +405,8 @@ int run_application()
         presentation::EquipmentPresenter equipment_presenter(assets, renderer);
         auto& equipment = player.model().equipment();
         // Items come from content/items/**/*.mmoitem; the player starts with the training sword.
+        // The equipped item sets the model in hand, damage, interval and range; keys 4-8 still
+        // pick the combat class, abilities and the attack variations used without an item.
         PlayerItems items{std::filesystem::path{kItemsDirectory}};
         items.give("wooden_sword");
         if (std::string reason; !items.toggle_main_hand(&reason)) {
@@ -207,16 +428,18 @@ int run_application()
 
         const auto& clips = body_model->animations;
         std::cout << "[app] Movement prototype running. WASD moves relative to the camera; "
-            << "hold Shift to run; Space jumps; hold right mouse to orbit; left click selects a target, Tab/Shift+Tab cycles targets, 1 toggles auto attack (works while moving); F3 prints animation layer debug; F4 equips/removes the main-hand weapon; I opens the inventory; "
+            << "always running; Space jumps; hold left or right mouse and drag to orbit freely (camera smoothly returns behind); right-click selects/engages or exits combat when not dragged; left click selects a target; Tab/Shift+Tab cycles targets; 1 toggles auto attack; F3 prints animation layer debug; F4 equips/removes the main-hand item; I opens the inventory; "
             << "scroll zooms; [ and ] preview every animation; F1 toggles World Editor; "
-            << "Escape exits.\n"
+            << "4 Greatsword, 5 Archer, 6 Mage, 7 Sword+Shield, 8 Axe; Escape exits.\n"
             << "[editor] F1 toggles editor; RMB + mouse looks; WASD moves; Q/E descend/ascend; "
             << "Shift speeds up; Ctrl slows down; wheel adjusts speed; M/R/T select move/rotate/scale, "
             << "select an object and drag LMB to transform; X/Y/Z/U select axes, "
             << "G toggles snap and C toggles world/local space.\n"
             << "[terrain] in World Editor, F2 toggles terrain tools; 1 raise, 2 lower, "
-            << "3 flatten; left mouse sculpts; wheel changes brush size; "
-            << "Ctrl+S saves; Ctrl+L loads.\n"
+            << "3 flatten, 4 material paint; in paint mode 1 grass, 2 dirt, "
+            << "3 rock, 5 sand; left mouse edits; wheel changes brush size; "
+            << "Ctrl+S saves the world; Ctrl+L loads; Ctrl+Z/Y undo/redo. "
+            << "The editor toolbar has the same actions.\n"
             << "[model] loaded " << body_model->meshes.size() << " meshes, "
             << body_model->skeleton.bones.size() << " bones and "
             << clips.size() << " available animation clips.\n"
@@ -234,6 +457,8 @@ int run_application()
         bool previous_focus_pressed = false;
         bool previous_snap_toggle = false;
         bool previous_space_toggle = false;
+        bool previous_undo = false;
+        bool previous_redo = false;
         bool previous_transform_x = false;
         bool previous_transform_y = false;
         bool previous_transform_z = false;
@@ -244,11 +469,17 @@ int run_application()
         float flatten_height = 0.0f;
         glm::vec2 brush_center{0.0f};
         world::TerrainBrush selected_brush = world::TerrainBrush::raise;
+        world::TerrainMaterial selected_material =
+            world::TerrainMaterial::grass;
         double previous_time = window.time_seconds();
 
         while (!window.should_close()) {
             window.poll_events();
             editor_ui.begin_frame();
+            editor::EditorSnapshot frame_before =
+                editor::capture_snapshot(terrain, selection);
+            bool world_changed_this_frame = false;
+            std::string history_key;
             if (window.escape_pressed()) {
                 window.request_close();
             }
@@ -282,8 +513,14 @@ int run_application()
                 window.key_pressed(platform::Key::LeftControl) &&
                 window.key_pressed(platform::Key::S);
             if (save_pressed && !previous_save) {
-                terrain.save(terrain_path);
-                std::cout << "[terrain] saved " << terrain_path.string() << '\n';
+                try {
+                    save_world();
+                } catch (const std::exception& error) {
+                    const std::string message =
+                        "Could not save world: " + std::string(error.what());
+                    std::cerr << "[world] " << message << '\n';
+                    editor_ui.set_status(message, true);
+                }
             }
             previous_save = save_pressed;
 
@@ -293,41 +530,50 @@ int run_application()
                 window.key_pressed(platform::Key::LeftControl) &&
                 window.key_pressed(platform::Key::L);
             if (load_pressed && !previous_load) {
-                if (std::filesystem::exists(terrain_path)) {
-                    terrain.load(terrain_path);
-                    renderer.set_terrain(terrain);
-                    std::cout << "[terrain] loaded " << terrain_path.string() << '\n';
-                } else {
-                    std::cerr << "[terrain] no saved terrain at "
-                        << terrain_path.string() << '\n';
+                try {
+                    load_world();
+                    frame_before = editor::capture_snapshot(terrain, selection);
+                } catch (const std::exception& error) {
+                    const std::string message =
+                        "Could not load world: " + std::string(error.what());
+                    std::cerr << "[world] " << message << '\n';
+                    editor_ui.set_status(message, true);
                 }
             }
             previous_load = load_pressed;
+            const bool control_down = window.key_pressed(platform::Key::LeftControl);
+            const bool undo_pressed = world_editor.is_active() && control_down &&
+                !editor_ui.wants_keyboard_capture() &&
+                window.key_pressed(platform::Key::Z);
+            const bool redo_pressed = world_editor.is_active() && control_down &&
+                !editor_ui.wants_keyboard_capture() &&
+                window.key_pressed(platform::Key::Y);
+            const bool undo_requested = undo_pressed && !previous_undo;
+            const bool redo_requested = redo_pressed && !previous_redo;
+            previous_undo = undo_pressed;
+            previous_redo = redo_pressed;
 
             const bool game_mode = world_editor.mode() == editor::EngineMode::game;
-            const bool equipment_toggle = window.key_pressed(platform::Key::F4);
-            if (game_mode && !editor_ui.wants_keyboard_capture() &&
-                equipment_toggle && !previous_equipment_toggle) {
-                std::string reason;
-                if (items.toggle_main_hand(&reason)) {
-                    const auto main_hand = items.loadout().equipped(game::items::ItemSlot::MainHand);
-                    std::cout << "[items] main hand "
-                        << (main_hand ? items.catalog().find(*main_hand)->name : "empty") << '\n';
-                } else {
-                    std::cout << "[items] " << reason << '\n';
-                }
-            }
-            previous_equipment_toggle = equipment_toggle;
-            const bool inventory_toggle = window.key_pressed(platform::Key::I);
-            if (game_mode && !editor_ui.wants_keyboard_capture() &&
-                inventory_toggle && !previous_inventory_toggle) {
-                inventory_open = !inventory_open;
-            }
-            previous_inventory_toggle = inventory_toggle;
             const bool right_dragging =
-                window.right_mouse_pressed() && (game_mode || world_editor.is_active()) &&
+                window.right_mouse_pressed() && world_editor.is_active() &&
                 !editor_ui.wants_mouse_capture();
-            window.set_cursor_captured(right_dragging);
+            const bool right_camera_dragging =
+                game_mode && window.right_mouse_pressed() &&
+                !editor_ui.wants_mouse_capture();
+            const bool left_camera_dragging =
+                game_mode && window.left_mouse_pressed() &&
+                !editor_ui.wants_mouse_capture();
+            if (right_camera_dragging && !previous_right_down) {
+                window.cursor_position(right_click_x, right_click_y);
+                right_drag_distance = 0.0;
+            }
+            if (left_camera_dragging && !previous_left_camera_dragging) {
+                window.cursor_position(left_click_x, left_click_y);
+                left_drag_distance = 0.0;
+                left_drag_movement_yaw = camera.yaw();
+            }
+            window.set_cursor_captured(
+                right_dragging || right_camera_dragging || left_camera_dragging);
             double mouse_delta_x = 0.0;
             double mouse_delta_y = 0.0;
             double scroll_delta = 0.0;
@@ -339,22 +585,53 @@ int run_application()
             }
             if (terrain_editor_active) {
                 const world::TerrainBrush previous_selection = selected_brush;
-                if (!editor_ui.wants_keyboard_capture() &&
-                    window.key_pressed(platform::Key::Digit1)) {
-                    selected_brush = world::TerrainBrush::raise;
-                } else if (!editor_ui.wants_keyboard_capture() &&
-                    window.key_pressed(platform::Key::Digit2)) {
-                    selected_brush = world::TerrainBrush::lower;
-                } else if (!editor_ui.wants_keyboard_capture() &&
-                    window.key_pressed(platform::Key::Digit3)) {
-                    selected_brush = world::TerrainBrush::flatten;
+                const world::TerrainMaterial previous_material = selected_material;
+                if (!editor_ui.wants_keyboard_capture()) {
+                    if (window.key_pressed(platform::Key::Digit4)) {
+                        selected_brush = selected_brush ==
+                                world::TerrainBrush::paint_material
+                            ? world::TerrainBrush::raise
+                            : world::TerrainBrush::paint_material;
+                    } else if (window.key_pressed(platform::Key::Digit1)) {
+                        if (selected_brush == world::TerrainBrush::paint_material) {
+                            selected_material = world::TerrainMaterial::grass;
+                        } else {
+                            selected_brush = world::TerrainBrush::raise;
+                        }
+                    } else if (window.key_pressed(platform::Key::Digit2)) {
+                        if (selected_brush == world::TerrainBrush::paint_material) {
+                            selected_material = world::TerrainMaterial::dirt;
+                        } else {
+                            selected_brush = world::TerrainBrush::lower;
+                        }
+                    } else if (window.key_pressed(platform::Key::Digit3)) {
+                        if (selected_brush == world::TerrainBrush::paint_material) {
+                            selected_material = world::TerrainMaterial::rock;
+                        } else {
+                            selected_brush = world::TerrainBrush::flatten;
+                        }
+                    } else if (window.key_pressed(platform::Key::Digit5) &&
+                        selected_brush == world::TerrainBrush::paint_material) {
+                        selected_material = world::TerrainMaterial::sand;
+                    }
                 }
-                if (selected_brush != previous_selection) {
+                if (selected_brush != previous_selection ||
+                    selected_material != previous_material) {
                     const char* const brush_name =
                         selected_brush == world::TerrainBrush::raise ? "raise" :
                         selected_brush == world::TerrainBrush::lower ? "lower" :
-                        "flatten";
-                    std::cout << "[terrain] brush " << brush_name << '\n';
+                        selected_brush == world::TerrainBrush::flatten ? "flatten" :
+                        "material paint";
+                    const char* const material_name =
+                        selected_material == world::TerrainMaterial::grass ? "grass" :
+                        selected_material == world::TerrainMaterial::dirt ? "dirt" :
+                        selected_material == world::TerrainMaterial::rock ? "rock" :
+                        "sand";
+                    std::cout << "[terrain] brush " << brush_name;
+                    if (selected_brush == world::TerrainBrush::paint_material) {
+                        std::cout << " / " << material_name;
+                    }
+                    std::cout << '\n';
                 }
             }
 
@@ -362,8 +639,15 @@ int run_application()
             const float delta_seconds = std::clamp(
                 static_cast<float>(current_time - previous_time), 0.0f, 0.1f);
             previous_time = current_time;
+            if (left_camera_dragging) {
+                left_drag_distance += std::abs(mouse_delta_x) + std::abs(mouse_delta_y);
+            }
+            if (right_camera_dragging) {
+                right_drag_distance += std::abs(mouse_delta_x) + std::abs(mouse_delta_y);
+            }
 
             if (world_editor.is_active() && !terrain_editor_active && !right_dragging &&
+                !control_down &&
                 !editor_ui.wants_keyboard_capture()) {
                 if (window.key_pressed(platform::Key::M)) {
                     selection.set_transform_mode(editor::TransformMode::translate);
@@ -425,7 +709,6 @@ int run_application()
                 input.strafe =
                     (window.key_pressed(input_settings.strafe_right) ? 1.0f : 0.0f) -
                     (window.key_pressed(input_settings.strafe_left) ? 1.0f : 0.0f);
-                input.run = window.key_pressed(input_settings.run);
                 input.jump_pressed = window.key_pressed(input_settings.jump);
             }
 
@@ -433,6 +716,17 @@ int run_application()
                 window.key_pressed(input_settings.previous_animation);
             const bool clip_forward = game_mode &&
                 window.key_pressed(input_settings.next_animation);
+            const std::array<platform::Key, 5> weapon_keys{
+                platform::Key::Digit4, platform::Key::Digit5,
+                platform::Key::Digit6, platform::Key::Digit7, platform::Key::Digit8};
+            for (std::size_t index = 0; index < weapon_keys.size(); ++index) {
+                const bool pressed = game_mode && !editor_ui.wants_keyboard_capture() &&
+                    window.key_pressed(weapon_keys[index]);
+                if (pressed && !previous_weapon_keys[index]) {
+                    select_weapon(index);
+                }
+                previous_weapon_keys[index] = pressed;
+            }
             if (clip_back && !previous_clip_back) {
                 preview_index = (preview_index + clips.size() - 1) % clips.size();
                 if (!controller.preview_animation(clips[preview_index].name)) {
@@ -450,6 +744,25 @@ int run_application()
             }
             previous_clip_back = clip_back;
             previous_clip_forward = clip_forward;
+            const bool equipment_toggle = window.key_pressed(platform::Key::F4);
+            if (game_mode && !editor_ui.wants_keyboard_capture() &&
+                equipment_toggle && !previous_equipment_toggle) {
+                std::string reason;
+                if (items.toggle_main_hand(&reason)) {
+                    const auto main_hand = items.loadout().equipped(game::items::ItemSlot::MainHand);
+                    std::cout << "[items] main hand "
+                        << (main_hand ? items.catalog().find(*main_hand)->name : "empty") << '\n';
+                } else {
+                    std::cout << "[items] " << reason << '\n';
+                }
+            }
+            previous_equipment_toggle = equipment_toggle;
+            const bool inventory_toggle = window.key_pressed(platform::Key::I);
+            if (game_mode && !editor_ui.wants_keyboard_capture() &&
+                inventory_toggle && !previous_inventory_toggle) {
+                inventory_open = !inventory_open;
+            }
+            previous_inventory_toggle = inventory_toggle;
 
             if (game_mode) {
                 const animation::Vector3& player_position = player.transform().position;
@@ -462,37 +775,33 @@ int run_application()
                 const float camera_yaw_forward = std::atan2(camera_forward.x, camera_forward.z);
 
                 // Target selection: click picks an entity, clicking empty space clears.
-                const bool target_click = window.left_mouse_pressed() &&
-                    !window.right_mouse_pressed() && !editor_ui.wants_mouse_capture();
+                const bool target_click = !left_camera_dragging &&
+                    previous_left_camera_dragging;
                 if (target_click && !previous_target_click) {
-                    double cursor_x = 0.0;
-                    double cursor_y = 0.0;
                     int window_width = 0;
                     int window_height = 0;
-                    window.cursor_position(cursor_x, cursor_y);
                     window.window_size(window_width, window_height);
-                    const glm::vec3 direction = cursor_ray(
-                        last_game_camera_pose, cursor_x, cursor_y, window_width, window_height);
-                    const game::combat::EntityId picked = game::combat::pick_entity(combat_registry,
-                        {last_game_camera_pose.eye_x, last_game_camera_pose.eye_y,
-                            last_game_camera_pose.eye_z},
-                        direction, 80.0f);
-                    if (picked != game::combat::kInvalidEntity) {
-                        targets.select(combat_registry, player_entity, picked);
-                    } else {
-                        targets.clear();
+                    if (left_drag_distance < 6.0) {
+                        const glm::vec3 direction = cursor_ray(
+                            last_game_camera_pose, left_click_x, left_click_y,
+                            window_width, window_height);
+                        const game::combat::EntityId picked = game::combat::pick_entity(combat_registry,
+                            {last_game_camera_pose.eye_x, last_game_camera_pose.eye_y,
+                                last_game_camera_pose.eye_z},
+                            direction, 80.0f);
+                        if (picked != game::combat::kInvalidEntity) {
+                            targets.select(combat_registry, player_entity, picked);
+                        } else {
+                            targets.clear();
+                        }
                     }
+                    left_drag_distance = 0.0;
                 }
                 previous_target_click = target_click;
-
-                // A short right click (not an orbit drag) engages or leaves combat.
-                const bool right_down = window.right_mouse_pressed() &&
-                    !editor_ui.wants_mouse_capture();
-                if (right_down) {
-                    right_drag_distance += std::abs(mouse_delta_x) + std::abs(mouse_delta_y);
-                    right_hold_time += delta_seconds;
-                } else if (previous_right_down) {
-                    if (right_drag_distance < 6.0 && right_hold_time < 0.35f) {
+                // Either held mouse button orbits freely; an unmoved right click still engages/exits combat.
+                const bool right_down = right_camera_dragging;
+                if (!right_down && previous_right_down) {
+                    if (right_drag_distance < 6.0) {
                         int window_width = 0;
                         int window_height = 0;
                         window.window_size(window_width, window_height);
@@ -509,7 +818,12 @@ int run_application()
                                 combat_registry.find(picked);
                             if (picked_entity != nullptr && picked_entity->alive() &&
                                 picked_entity->faction == game::combat::Faction::Hostile) {
-                                combat_system.set_auto_attack(true);
+                                if (selected_weapon_animation) {
+                                    combat_system.set_auto_attack(true);
+                                        } else {
+                                            std::cout << "[weapon] bow animation unavailable; "
+                                                << "use archer abilities instead\n";
+                                        }
                                 std::cout << "[combat] engaged " << picked_entity->name << '\n';
                             }
                         } else {
@@ -520,10 +834,6 @@ int run_application()
                 }
                 if (!right_down) {
                     right_drag_distance = 0.0;
-                    right_hold_time = 0.0f;
-                    if (!previous_right_down) {
-                        window.cursor_position(right_click_x, right_click_y);
-                    }
                 }
                 previous_right_down = right_down;
 
@@ -531,31 +841,84 @@ int run_application()
                     window.key_pressed(platform::Key::Tab);
                 if (tab_pressed && !previous_tab) {
                     targets.cycle(combat_registry, player_entity, camera_yaw_forward,
-                        window.key_pressed(platform::Key::LeftShift));
+                        window.key_pressed(platform::Key::LeftShift) ||
+                        window.key_pressed(platform::Key::RightShift));
                 }
                 previous_tab = tab_pressed;
+                const bool clear_target_key = !editor_ui.wants_keyboard_capture() &&
+                    window.key_pressed(platform::Key::Digit0);
+                if (clear_target_key && !previous_clear_target_key) {
+                    targets.clear();
+                    combat_system.set_auto_attack(false);
+                }
+                previous_clear_target_key = clear_target_key;
                 const bool auto_attack_key = !editor_ui.wants_keyboard_capture() &&
                     window.key_pressed(platform::Key::Digit1);
                 if (auto_attack_key && !previous_auto_attack_key) {
-                    combat_system.toggle_auto_attack();
+                    if (selected_weapon_animation) {
+                        combat_system.toggle_auto_attack();
+                    } else {
+                        std::cout << "[weapon] auto attack unavailable without a bow animation\n";
+                    }
                     std::cout << "[combat] auto attack "
                         << (combat_system.auto_attack_enabled() ? "on" : "off") << '\n';
                 }
                 previous_auto_attack_key = auto_attack_key;
+                combat_context = {
+                    player_entity_id, player_entity.position, controller.yaw(), true};
+                const bool ability_two_key = !editor_ui.wants_keyboard_capture() &&
+                    window.key_pressed(platform::Key::Digit2);
+                if (ability_two_key && !previous_ability_two_key) {
+                    const auto result = active_abilities->cast(
+                        combat_registry, combat_context, &collision_world,
+                        std::string(selected_weapon->basic_ability_id));
+                    if (result.damage) {
+                        active_abilities->gain_resource(10.0f);
+                    }
+                    if (result.block == game::combat::AbilityBlock::None &&
+                        selected_weapon->combat_class == game::combat::CombatClass::Mage) {
+                        (void)combat.request(character::CombatState::Cast);
+                    }
+                    std::cout << "[combat] ability " << selected_weapon->basic_ability_id << ": "
+                        << game::combat::to_string(result.block) << '\n';
+                }
+                previous_ability_two_key = ability_two_key;
+                const bool ability_three_key = !editor_ui.wants_keyboard_capture() &&
+                    window.key_pressed(platform::Key::Digit3);
+                if (ability_three_key && !previous_ability_three_key) {
+                    const auto result = active_abilities->cast(
+                        combat_registry, combat_context, &collision_world,
+                        std::string(selected_weapon->power_ability_id));
+                    if (result.block == game::combat::AbilityBlock::None &&
+                        selected_weapon->combat_class == game::combat::CombatClass::Mage) {
+                        (void)combat.request(character::CombatState::Cast);
+                    }
+                    std::cout << "[combat] ability " << selected_weapon->power_ability_id << ": "
+                        << game::combat::to_string(result.block) << '\n';
+                }
+                previous_ability_three_key = ability_three_key;
 
                 // Combat only reads a snapshot of the player; it never touches movement input.
                 targets.update(combat_registry);
-                combat_context = {
-                    player_entity_id, player_entity.position, controller.yaw(), true};
+                active_abilities->update(delta_seconds);
                 combat_system.update(delta_seconds, combat_registry, combat_context,
                     &collision_world, [&combat] {
+                        // The equipped item's clip, or the selected class's variations.
                         return combat.request_primary_attack();
                     });
                 controller.set_facing_target(
                     combat_system.desired_facing(combat_registry, combat_context));
                 controller.set_facing_rotation_speed(combat_system.settings().rotation_speed);
                 controller.update(
-                    delta_seconds, input, camera.yaw(), collision_world, &terrain);
+                    delta_seconds, input,
+                    left_camera_dragging ? left_drag_movement_yaw : camera.yaw(),
+                    collision_world, &terrain);
+                player_entity.position = {
+                    player.transform().position[0],
+                    player.transform().position[1],
+                    player.transform().position[2]};
+                combat_context = {
+                    player_entity_id, player_entity.position, controller.yaw(), true};
                 combat.update();
                 selection.clear();
             }
@@ -593,7 +956,14 @@ int run_application()
             scene::CameraPose camera_pose;
             if (game_mode) {
                 (void)camera.apply_input({
-                    mouse_delta_x, mouse_delta_y, scroll_delta, right_dragging});
+                    mouse_delta_x, mouse_delta_y, scroll_delta,
+                    left_camera_dragging || right_camera_dragging});
+                const bool moving_character =
+                    std::abs(input.forward) > 0.001f || std::abs(input.strafe) > 0.001f;
+                camera.set_follow_target_yaw(
+                    left_camera_dragging || right_camera_dragging || moving_character
+                    ? std::nullopt
+                    : std::optional<float>{controller.yaw() + 3.14159265f});
                 last_game_camera_pose = camera.update(
                     delta_seconds,
                     {{position[0], position[1], position[2]}, controller.yaw()},
@@ -622,6 +992,7 @@ int run_application()
                 editor_camera.update(delta_seconds, editor_input);
                 camera_pose = editor_camera.pose();
             }
+            previous_left_camera_dragging = left_camera_dragging;
             const bool left_brush = terrain_editor_active &&
                 window.left_mouse_pressed() && !editor_ui.wants_mouse_capture();
             const bool selection_click =
@@ -697,18 +1068,9 @@ int run_application()
                     }
                 }
                 selection.transform_selected(translation, rotation, scale_delta);
-                std::vector<world::CollisionBox> edited_boxes;
-                edited_boxes.reserve(selection.objects().size());
-                for (const editor::SelectableObject& object : selection.objects()) {
-                    if (!object.asset_path.empty()) {
-                        continue;
-                    }
-                    const editor::SelectionBounds bounds =
-                        *selection.bounds_for(object.id);
-                    edited_boxes.push_back({bounds.minimum, bounds.maximum});
-                }
-                collision_world = world::CollisionWorld(
-                    collision_world.bounds(), std::move(edited_boxes));
+                world_changed_this_frame = true;
+                history_key = "object-transform";
+                rebuild_editor_collision();
             }
             previous_selection_click = selection_click;
             if (terrain_editor_active) {
@@ -732,11 +1094,18 @@ int run_application()
                                 !previous_flattening)) {
                             flatten_height = terrain.height_at(brush_center);
                         }
+                        terrain.preload_regions_near(
+                            brush_center,
+                            static_cast<int>(std::ceil(
+                                brush_radius / world::Terrain::kChunkCells)) + 1);
+                        frame_before = editor::capture_snapshot(terrain, selection);
                         const bool changed = terrain.apply_brush(
                             brush_center, brush_radius, 1.8f, delta_seconds,
-                            selected_brush, flatten_height);
+                            selected_brush, flatten_height, selected_material);
                         if (changed) {
-                            renderer.set_terrain(terrain);
+                            renderer.set_terrain(terrain, {camera_pose.focus_x, camera_pose.focus_z});
+                            world_changed_this_frame = true;
+                            history_key = "terrain-brush";
                         }
                     }
                 }
@@ -750,21 +1119,52 @@ int run_application()
             previous_flattening =
                 selected_brush == world::TerrainBrush::flatten;
 
-            const editor::EditorUIActions ui_actions =
-                editor_ui.draw(world_editor.is_active(), selection, asset_database);
+            const editor::EditorUIActions ui_actions = editor_ui.draw(
+                world_editor.is_active(), selection, asset_database, editor_history,
+                terrain_editor_active, selected_brush, selected_material, brush_radius);
             if (ui_actions.world_changed) {
-                std::vector<world::CollisionBox> edited_boxes;
-                edited_boxes.reserve(selection.objects().size());
-                for (const editor::SelectableObject& object : selection.objects()) {
-                    if (!object.asset_path.empty()) {
-                        continue;
-                    }
-                    const editor::SelectionBounds bounds =
-                        *selection.bounds_for(object.id);
-                    edited_boxes.push_back({bounds.minimum, bounds.maximum});
+                world_changed_this_frame = true;
+                if (history_key.empty()) {
+                    history_key = "inspector";
                 }
-                collision_world = world::CollisionWorld(
-                    collision_world.bounds(), std::move(edited_boxes));
+                rebuild_editor_collision();
+            }
+            if (ui_actions.request_save) {
+                try {
+                    save_world();
+                } catch (const std::exception& error) {
+                    const std::string message =
+                        "Could not save world: " + std::string(error.what());
+                    std::cerr << "[world] " << message << '\n';
+                    editor_ui.set_status(message, true);
+                }
+            }
+            if (ui_actions.request_load) {
+                try {
+                    load_world();
+                    frame_before = editor::capture_snapshot(terrain, selection);
+                    world_changed_this_frame = false;
+                } catch (const std::exception& error) {
+                    const std::string message =
+                        "Could not load world: " + std::string(error.what());
+                    std::cerr << "[world] " << message << '\n';
+                    editor_ui.set_status(message, true);
+                }
+            }
+            if (undo_requested || ui_actions.request_undo) {
+                if (editor_history.undo(terrain, selection)) {
+                    renderer.set_terrain(terrain, {camera_pose.focus_x, camera_pose.focus_z});
+                    rebuild_editor_collision();
+                }
+                world_changed_this_frame = false;
+                editor_history.break_coalescing();
+            } else if (redo_requested || ui_actions.request_redo) {
+                if (editor_history.redo(terrain, selection)) {
+                    renderer.set_terrain(terrain, {camera_pose.focus_x, camera_pose.focus_z});
+                    rebuild_editor_collision();
+                }
+                world_changed_this_frame = false;
+                editor_history.break_coalescing();
             }
             if (ui_actions.asset_drop) {
                 try {
@@ -816,6 +1216,9 @@ int run_application()
                         object_name.empty() ? "Asset" : object_name,
                         model_key,
                     });
+                    world_changed_this_frame = true;
+                    history_key = "asset-drop";
+                    rebuild_editor_collision();
                     editor_ui.set_status(
                         "Added " + ui_actions.asset_drop->asset_path.generic_string(),
                         false);
@@ -825,6 +1228,14 @@ int run_application()
                     std::cerr << "[assets] " << message << '\n';
                     editor_ui.set_status(message, true);
                 }
+            }
+            if (world_changed_this_frame) {
+                editor_history.record(
+                    std::move(frame_before),
+                    editor::capture_snapshot(terrain, selection),
+                    history_key);
+            } else if (!left_brush && !selection_click) {
+                editor_history.break_coalescing();
             }
 
             if (game_mode) {
@@ -860,8 +1271,14 @@ int run_application()
                 if (game_mode && target != nullptr) {
                     renderer.set_target_indicator(true, target->position, 0.9f,
                         target->alive() ? glm::vec3{1.0f, 0.2f, 0.15f} : glm::vec3{0.5f});
-                    std::string status = std::string("Auto Attack: ") +
-                        (combat_system.auto_attack_enabled() ? "ON" : "OFF (press 1)");
+                    const std::string auto_attack_status = selected_weapon_animation
+                        ? (combat_system.auto_attack_enabled() ? "ON" : "OFF (press 1)")
+                        : "OFF (no bow animation)";
+                    std::string status = "Weapon: " + std::string(selected_weapon->name) +
+                        " (4-7) | Auto Attack: " + auto_attack_status;
+                    status += " | 2 Basic | 3 Power (" +
+                        std::to_string(static_cast<int>(active_abilities->resource())) + " " +
+                        game::combat::to_string(active_abilities->resource_type()) + ')';
                     if (combat_system.auto_attack_enabled() &&
                         combat_system.last_block() != game::combat::AttackBlock::None) {
                         status += std::string(" - ") + game::combat::to_string(combat_system.last_block());
@@ -898,6 +1315,7 @@ int run_application()
             const auto selected_bounds = selected_object
                 ? selection.bounds_for(*selected_object)
                 : std::nullopt;
+            renderer.set_terrain(terrain, {camera_pose.focus_x, camera_pose.focus_z});
             renderer.render(framebuffer_width, framebuffer_height,
                 camera_pose, collision_world,
                 editor_mode ? selected_object : std::nullopt,

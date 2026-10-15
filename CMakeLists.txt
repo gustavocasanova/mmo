@@ -98,7 +98,9 @@ target_link_libraries(mmo_scene PUBLIC mmo_world)
 add_library(mmo_editor STATIC
     src/editor/asset_database.cpp
     src/editor/editor_camera.cpp
+    src/editor/editor_history.cpp
     src/editor/selection.cpp
+    src/editor/world_document.cpp
     src/editor/world_editor.cpp)
 target_include_directories(mmo_editor PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(mmo_editor PUBLIC mmo_scene)

@@ -129,3 +129,20 @@ dedos. O encaixe da [espada](../content/items/wooden_sword/README.md) usa `hand_
 do rig UAL; outro rig pode exigir ajustes. `EquipmentDefinition` descreve conteúdo
 visual e animação, não uma instância persistente com durabilidade. As regras do item
 (`ItemDefinition`, inventário, loadout) ficam em `game/items`.
+
+## Tipos de arma do protótipo (teclas 4–8)
+
+O catálogo fixo `game/items/weapons.hpp` oferece Espada grande (4), Arco de arqueiro (5), Cajado de mago (6), Espada e escudo (7) e Machado (8). Cada arma seleciona suas habilidades e, quando há animações compatíveis, percorre as variações de ataque uma a uma. O arqueiro usa as animações de locomoção do pacote Longbow, mas não recebe um ataque automático animado: os arquivos disponíveis não incluem disparo de arco.
+
+Os FBXs escolhidos dos pacotes ZIP ficam em `assets/animations/source/` localmente. Para convertê-los e retargetá-los ao esqueleto UAL, execute:
+
+```text
+node scripts/retarget_melee_animations.js <caminho-para-FBX2glTF.exe> --weapon-packs
+```
+
+O comando gera `assets/animations/generated/weapon_animations_ual.glb`, carregado pelo cliente se estiver presente. O pacote contém variações de espada grande, espada e escudo, machado e magia, locomoção de arco, além de `Jump_Running` e `Jump_Running_Landing`; as transições de salto e aterrissagem usam cross-fade para voltar à corrida equipada. Os FBXs de origem e os GLBs gerados são locais e ignorados pelo Git. Sem o GLB gerado, o cliente mantém as animações UAL embutidas e informa no console quais recursos opcionais não estão disponíveis.
+
+Os tipos de arma e os itens convivem: o tipo escolhido (4–8) define classe, habilidades,
+locomoção e as variações de ataque usadas **sem** item na mão; o item equipado
+(`.mmoitem`) define o modelo na mão, dano, cadência, alcance e, se tiver
+`visual.attack_clip`, o clip do golpe (`CombatController::request_primary_attack`).

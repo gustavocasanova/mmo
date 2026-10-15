@@ -2,10 +2,12 @@
 
 ## Unreleased
 
+- Câmera de jogo: visão livre independente do personagem ao segurar e arrastar qualquer botão do mouse; no arrasto do botão esquerdo, a direção de movimento fica ancorada no início do arrasto, sem a órbita redirecionar o personagem. Retorno suave para trás do personagem ao soltar; cliques sem arrasto preservam seleção de alvo no botão esquerdo e interação de combate no botão direito.
 - Tab-target combat: `game::combat` module (entities, TargetSystem with click/Tab/Shift+Tab, auto attack with range/cooldown/line of sight, DamageSystem), target ring, ImGui target frame, three enemies with death/despawn/respawn. Press `1` to toggle auto attack; combat facing uses `rotation_speed` without blocking movement.
 
 ### Added
 
+- Polimento do World Editor: painel lateral unificado com abas Objects/Assets, viewport ampliada, Inspector à direita e barra compacta com ações de edição e controles clicáveis para ferramentas de terreno.
 - Sistema de animação em camadas: `AnimationMixer` + `BoneMask` (corpo inferior/superior), `MovementState`, `CombatState`, `CombatController`/`CombatSystem` com eventos AttackStart/AttackHit/AttackEnd; ataque (botão esquerdo/1/2/3) simultâneo ao movimento sem clipes combinados; debug F3.
 
 - Marco 1 do World Editor: estado `EngineMode` isolado em `mmo_editor`, alternância F1 entre Game Mode e World Editor Mode e pausa/restauração do controlador do personagem sem recriar o personagem.
@@ -16,6 +18,10 @@
 - Marco 4 implementado e validado por build/testes CPU: transformações de objetos selecionados com mover/rotacionar/escala, gizmos XYZ, eixos World/Local e snap configurável; os bounds atualizados alimentam seleção, renderização e colisão. Validação visual interativa ainda pendente. Corrigido o sentido vertical da câmera de terceira pessoa para que mover o mouse para cima olhe para cima.
 - Marco 5: painéis gráficos ImGui de World Hierarchy e Inspector; objetos podem ser selecionados, renomeados, duplicados, apagados e ter seus transforms editados. As alterações atualizam renderização e colisores do mundo.
 - Marco 6: Asset Database para GLB/glTF e manifests de prefab versionados, Asset Browser com busca e criação de prefab, drag & drop para instanciar modelos estáticos selecionáveis e renderer com geometria transformada pela hierarquia de nós. Modelos com skin são rejeitados explicitamente; validação visual interativa continua pendente.
+- Marco 7: documento de mundo versionado com heightmap e objetos, histórico undo/redo e edição de terreno integrada.
+- Marco 8: terreno finito ampliado para 384×384 células em 24×24 chunks; meshes OpenGL são carregadas/descarregadas ao redor da câmera, chunks editados invalidam somente as meshes afetadas e arquivos de heightmap legados são migrados para o centro do terreno.
+- Marco 9: heightmap paginada em arquivos regionais sidecar, cache CPU LRU limitada a 128 regiões, persistência de páginas sujas e carregamento sob demanda durante amostragem, edição e geração de meshes.
+- Marco 10: pincel de pintura de materiais com pesos interpolados por vértice, paletas procedurais de grama/terra/rocha/areia, persistência nos documentos/regiões e renderização com variação procedural; arquivos antigos assumem grama.
 
 ## 0.1.0 — Marco 001 (sources landed, not yet verified on this machine)
 

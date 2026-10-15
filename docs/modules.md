@@ -22,15 +22,15 @@ engine               core, world, animation, assets, equipment, character,
 | Módulo | Target | Responsabilidade |
 | --- | --- | --- |
 | `core/` | `mmo_core` | Formato texto versionado chave=valor usado pelo conteúdo |
-| `world/` | `mmo_world` | Terreno (heightfield) e colisão AABB |
+| `world/` | `mmo_world` | Terreno (heightfield em chunks, páginas de região em disco) e colisão AABB |
 | `animation/` | `mmo_animation` | Skeleton, pose, clips, camadas locomoção/ação, eventos |
 | `assets/` | `mmo_assets` | Importação glTF/GLB (fastgltf), modelos CPU, geometria estática |
 | `equipment/` | `mmo_equipment` | Contrato `Equipment`, `Weapon`, `BasicEquipment`, slots visuais e encaixes em bones |
 | `character/` | `mmo_character` | Corpo/modelo, controlador de movimento, `CombatController` (clip de ataque) |
 | `scene/` | `mmo_scene` | Câmera e controlador de órbita |
-| `editor/` | `mmo_editor` | Modos, câmera livre, seleção, transformação, asset database (UI ImGui fica no cliente) |
-| `game/combat/` | `mmo_game` | Entidades de combate, alvos, auto-ataque, dano, `WeaponStats` |
-| `game/items/` | `mmo_game` | `ItemDefinition`, `ItemCatalog`, `Inventory`, `Loadout` — ver [itens](items.md) |
+| `editor/` | `mmo_editor` | Modos, câmera livre, seleção, transformação, asset database, histórico (undo/redo) e documento de mundo `.mmoworld` (UI ImGui fica no cliente) |
+| `game/combat/` | `mmo_game` | Entidades de combate, alvos, auto-ataque, dano, `WeaponStats`, habilidades/recursos por classe (`AbilitySystem`) |
+| `game/items/` | `mmo_game` | `ItemDefinition`, `ItemCatalog`, `Inventory`, `Loadout` — ver [itens](items.md); `weapons.hpp`: catálogo fixo dos tipos de arma 4–8 (classe, habilidades, variações de ataque) |
 | `presentation/` | `mmo_presentation` + cliente | `ItemVisual`, `LoadoutPresenter`; `EquipmentPresenter` (usa renderer) |
 | `renderer/`, `platform/` | `mmo_client` | OpenGL e GLFW |
 | `apps/client/` | `mmo_client` | `application.cpp`, `PlayerItems`, `DemoEnemies`, setup de animação, janelas ImGui |

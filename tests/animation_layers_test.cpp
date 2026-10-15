@@ -83,6 +83,51 @@ void test_blend_is_shortest_path_and_weighted()
     check(AnimationMixer::blend(a, b, 1.0f).translation[0] == 2.0f, "weight 1 uses upper");
 }
 
+void test_masked_animation_channels_replace_lower_body_only()
+{
+    const Skeleton skeleton = make_skeleton();
+    const std::size_t pelvis = *skeleton.find_bone("pelvis");
+    const std::size_t thigh = *skeleton.find_bone("thigh");
+    const std::size_t arm = *skeleton.find_bone("arm");
+    BoneMask lower_body(skeleton.bones.size());
+    lower_body.set_weight(pelvis, 1.0f);
+    lower_body.set_weight(thigh, 1.0f);
+
+    AnimationClip base = make_clip("run", 1.0f, pelvis, 0.2f);
+    base.channels.push_back(make_clip("base_arm", 1.0f, arm, 0.4f).channels.front());
+    AnimationClip alternate = make_clip("alternate", 2.0f, pelvis, 1.2f);
+    alternate.channels.push_back(make_clip("alternate_thigh", 2.0f, thigh, 0.8f)
+            .channels.front());
+    alternate.channels.push_back(make_clip("alternate_arm", 2.0f, arm, 2.0f)
+            .channels.front());
+
+    replace_masked_channels(base, alternate, lower_body);
+
+    check(base.name == "run" && base.duration == 1.0f,
+        "channel replacement must preserve the base clip identity and duration");
+    check(base.channels.size() == 3, "lower-body channel must be added without extra upper channels");
+    const auto channel_for = [&base](std::size_t bone) -> const AnimationChannel& {
+        for (const AnimationChannel& channel : base.channels) {
+            if (channel.bone_index == bone) {
+                return channel;
+            }
+        }
+        throw std::runtime_error("expected animation channel is missing");
+    };
+    check(std::abs(base.channels.front().rotations.values.front().z -
+            alternate.channels.front().rotations.values.front().z) < 1e-5f,
+        "pelvis must use the alternate pack's lower-body track");
+    check(std::abs(channel_for(thigh).rotations.values.front().z -
+            alternate.channels[1].rotations.values.front().z) < 1e-5f,
+        "leg channels must be copied from the alternate pack");
+    check(std::abs(channel_for(arm).rotations.values.front().z -
+            make_clip("expected_arm", 1.0f, arm, 0.4f).channels.front().rotations.values.front().z)
+            < 1e-5f,
+        "unmasked upper-body channels must stay on the base pack");
+    check(std::abs(channel_for(pelvis).rotations.times.back() - 1.0f) < 1e-5f,
+        "alternate tracks must be retimed to the base clip duration");
+}
+
 void test_layers_move_only_masked_bones_and_emit_events()
 {
     const Skeleton skeleton = make_skeleton();
@@ -187,6 +232,7 @@ int main()
     try {
         test_bone_mask_branch();
         test_blend_is_shortest_path_and_weighted();
+        test_masked_animation_channels_replace_lower_body_only();
         test_layers_move_only_masked_bones_and_emit_events();
         test_action_can_retrigger_during_blend_out();
     } catch (const std::exception& error) {

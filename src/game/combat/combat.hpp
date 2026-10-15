@@ -108,7 +108,8 @@ private:
 
 enum class CombatState { None, Combat, Attacking, Casting, Dead };
 enum class AttackBlock {
-    None, PlayerDead, NoTarget, TargetDead, OutOfRange, NotFacing, NoLineOfSight, OnCooldown
+    None, PlayerDead, NoTarget, InvalidTarget, TargetDead, OutOfRange, NotFacing,
+    NoLineOfSight, OnCooldown, TargetChanged
 };
 
 const char* to_string(CombatState state);
@@ -124,12 +125,86 @@ struct WeaponStats {
     [[nodiscard]] bool valid() const;
 };
 
+enum class CombatClass { Warrior, Mage, Archer };
+enum class ResourceType { Rage, Mana, Focus };
+enum class AbilityTarget { Hostile, Self };
+enum class AbilityBlock {
+    None, UnknownAbility, PlayerDead, InvalidTarget, TargetDead, OutOfRange,
+    NotFacing, NoLineOfSight, InsufficientResource, OnCooldown, Casting
+};
+
+struct AbilityDefinition {
+    std::string id;
+    std::string name;
+    CombatClass combat_class = CombatClass::Warrior;
+    ResourceType resource = ResourceType::Rage;
+    AbilityTarget target = AbilityTarget::Hostile;
+    float resource_cost = 0.0f;
+    float cooldown = 0.0f;
+    float min_range = 0.0f;
+    float max_range = 2.5f;
+    float cast_time = 0.0f;
+    float damage = 0.0f;
+    float max_turn_angle_degrees = 70.0f;
+    bool require_line_of_sight = true;
+};
+
+struct AbilityResult {
+    AbilityBlock block = AbilityBlock::None;
+    std::string ability_id;
+    std::optional<DamageEvent> damage;
+};
+
+const char* to_string(AbilityBlock reason);
+const char* to_string(ResourceType resource);
+std::vector<AbilityDefinition> default_abilities(CombatClass combat_class);
+
+struct CombatContext;
+
+class AbilitySystem {
+public:
+    AbilitySystem(CombatClass combat_class, TargetSystem& targets, DamageSystem& damage,
+        std::vector<AbilityDefinition> abilities = {});
+
+    [[nodiscard]] CombatClass combat_class() const { return combat_class_; }
+    [[nodiscard]] ResourceType resource_type() const { return resource_type_; }
+    [[nodiscard]] float resource() const { return resource_; }
+    [[nodiscard]] float max_resource() const { return max_resource_; }
+    [[nodiscard]] float cooldown_remaining(const std::string& ability_id) const;
+    [[nodiscard]] float cast_remaining() const { return cast_remaining_; }
+    [[nodiscard]] AbilityBlock evaluate(const EntityRegistry& registry,
+        const CombatContext& context, const world::CollisionWorld* world,
+        const std::string& ability_id) const;
+
+    void gain_resource(float amount);
+    void set_resource(float value);
+    void update(float delta_seconds);
+    AbilityResult cast(EntityRegistry& registry, const CombatContext& context,
+        const world::CollisionWorld* world, const std::string& ability_id);
+
+private:
+    const AbilityDefinition* find(const std::string& ability_id) const;
+    AbilityBlock evaluate_definition(const EntityRegistry& registry,
+        const CombatContext& context, const world::CollisionWorld* world,
+        const AbilityDefinition& definition) const;
+
+    CombatClass combat_class_;
+    ResourceType resource_type_;
+    float resource_ = 0.0f;
+    float max_resource_ = 100.0f;
+    TargetSystem& targets_;
+    DamageSystem& damage_;
+    std::vector<AbilityDefinition> abilities_;
+    std::vector<float> cooldowns_;
+    float cast_remaining_ = 0.0f;
+    std::size_t active_ability_ = 0;
+};
+
 struct CombatSettings {
     // Unarmed values; an equipped weapon replaces them through CombatSystem::set_weapon.
     float attack_range = 2.5f;
     float attack_speed = 1.5f;  // seconds between swings
     float damage = 20.0f;
-    float hit_range_tolerance = 0.75f;  // extra reach allowed when the hit lands (player is moving)
     bool combat_facing_enabled = true;
     float rotation_speed = 7.0f;        // radians per second used to turn toward the target
     float max_turn_angle_degrees = 70.0f;  // largest angle off-target at which a swing may start
@@ -171,13 +246,18 @@ public:
     void update(float delta_seconds, const EntityRegistry& registry, const CombatContext& context,
         const world::CollisionWorld* world, const SwingRequest& request_swing);
     // Called by the animation layer's AttackHit event; validates again and applies damage.
-    std::optional<DamageEvent> on_attack_hit(EntityRegistry& registry, const CombatContext& context);
+    std::optional<DamageEvent> on_attack_hit(EntityRegistry& registry,
+        const CombatContext& context, const world::CollisionWorld* world = nullptr);
     void on_swing_end();
     // Yaw the character should turn toward, if combat facing is active.
     [[nodiscard]] std::optional<float> desired_facing(
         const EntityRegistry& registry, const CombatContext& context) const;
 
 private:
+    [[nodiscard]] AttackBlock evaluate_target(const EntityRegistry& registry,
+        const CombatContext& context, EntityId target_id, const world::CollisionWorld* world,
+        bool check_cooldown) const;
+
     CombatSettings settings_;
     std::optional<WeaponStats> weapon_;
     TargetSystem& targets_;

@@ -15,6 +15,7 @@ enum class Key {
     Space,
     F,
     LeftShift,
+    RightShift,
     LeftBracket,
     RightBracket,
     E,

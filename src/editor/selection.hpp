@@ -65,6 +65,9 @@ public:
     [[nodiscard]] std::optional<SelectionBounds> bounds_for(SelectionId id) const;
     [[nodiscard]] std::optional<SelectableObject> object_for(SelectionId id) const;
     [[nodiscard]] const std::vector<SelectableObject>& objects() const;
+    void replace_objects(
+        std::vector<SelectableObject> objects,
+        std::optional<SelectionId> selected = std::nullopt);
     [[nodiscard]] SelectionId add_object(SelectableObject object);
     [[nodiscard]] TransformMode transform_mode() const;
     [[nodiscard]] TransformAxis transform_axis() const;

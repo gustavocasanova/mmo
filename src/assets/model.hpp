@@ -68,6 +68,10 @@ public:
     [[nodiscard]] virtual Model load(const std::filesystem::path& path) const = 0;
 };
 
+// Copies the clips of `source` into `target`; both models must share the same bone names.
+// Clips whose name already exists in `target` are skipped.
+void append_animations(Model& target, const Model& source);
+
 class AssetSystem {
 public:
     explicit AssetSystem(const ModelLoader& model_loader);

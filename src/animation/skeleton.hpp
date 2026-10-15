@@ -95,8 +95,9 @@ public:
     Animator(const Skeleton& skeleton, std::vector<AnimationClip> clips = {});
 
     void play(std::size_t clip_index, bool loop = true);
+    // `keep_phase` starts the new clip at the same normalized time (for same-gait locomotion).
     [[nodiscard]] bool cross_fade(std::size_t clip_index, float duration_seconds,
-        bool loop = true);
+        bool loop = true, bool keep_phase = false);
     void stop();
     void update(float delta_seconds);
 
@@ -106,6 +107,7 @@ public:
     [[nodiscard]] std::size_t clip_count() const;
     [[nodiscard]] std::optional<std::size_t> find_clip(std::string_view name) const;
     [[nodiscard]] const AnimationClip& clip(std::size_t clip_index) const;
+    [[nodiscard]] const Skeleton& skeleton() const;
     // Layer-mixing building blocks: sample a clip over the bind pose and rebuild matrices.
     void sample_clip_pose(std::size_t clip_index, float time_seconds,
         std::vector<BoneTransform>& transforms) const;

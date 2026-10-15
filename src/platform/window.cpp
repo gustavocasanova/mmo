@@ -26,6 +26,7 @@ int glfw_key(Key key)
     case Key::Space: return GLFW_KEY_SPACE;
     case Key::F: return GLFW_KEY_F;
     case Key::LeftShift: return GLFW_KEY_LEFT_SHIFT;
+    case Key::RightShift: return GLFW_KEY_RIGHT_SHIFT;
     case Key::LeftBracket: return GLFW_KEY_LEFT_BRACKET;
     case Key::RightBracket: return GLFW_KEY_RIGHT_BRACKET;
     case Key::E: return GLFW_KEY_E;
