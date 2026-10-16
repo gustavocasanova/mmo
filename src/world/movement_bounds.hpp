@@ -1,5 +1,5 @@
 #pragma once
-namespace mmo::game::world {
+namespace mmo::world {
 struct MovementBounds {
     float min_x = -36.0f;
     float max_x = 36.0f;

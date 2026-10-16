@@ -106,8 +106,8 @@ EditorUIActions EditorUI::draw(
     AssetDatabase& assets,
     const EditorHistory& history,
     bool& terrain_tools_active,
-    game::world::TerrainBrush& terrain_brush,
-    game::world::TerrainMaterial& terrain_material,
+    world::TerrainBrush& terrain_brush,
+    world::TerrainMaterial& terrain_material,
     float& brush_radius,
     float& brush_strength)
 {
@@ -222,6 +222,35 @@ EditorUIActions EditorUI::draw(
                 terrain_tools_active)) {
             terrain_tools_active = !terrain_tools_active;
         }
+        if (terrain_tools_active) {
+            ImGui::SameLine();
+            const char* brush_names[] = {"Raise", "Lower", "Flatten", "Paint"};
+            int brush_index = terrain_brush == world::TerrainBrush::raise ? 0 :
+                terrain_brush == world::TerrainBrush::lower ? 1 :
+                terrain_brush == world::TerrainBrush::flatten ? 2 : 3;
+            ImGui::SetNextItemWidth(100.0f);
+            if (ImGui::Combo("##TerrainTool", &brush_index, brush_names, 4)) {
+                terrain_brush = brush_index == 0
+                    ? world::TerrainBrush::raise
+                    : brush_index == 1 ? world::TerrainBrush::lower
+                    : brush_index == 2 ? world::TerrainBrush::flatten
+                    : world::TerrainBrush::paint_material;
+            }
+            if (terrain_brush == world::TerrainBrush::paint_material) {
+                ImGui::SameLine();
+                const char* material_names[] = {"Grass", "Dirt", "Rock", "Sand"};
+                int material_index = static_cast<int>(terrain_material);
+                ImGui::SetNextItemWidth(100.0f);
+                if (ImGui::Combo(
+                        "##TerrainMaterial", &material_index, material_names, 4)) {
+                    terrain_material =
+                        static_cast<world::TerrainMaterial>(material_index);
+                }
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(110.0f);
+            ImGui::SliderFloat("##BrushSize", &brush_radius, 1.0f, 12.0f, "%.1f");
+        }
     }
     ImGui::End();
 
@@ -330,23 +359,23 @@ EditorUIActions EditorUI::draw(
                     const char* brush_names[] = {
                         "Elevar", "Abaixar", "Nivelar", "Pintar material"};
                     int brush_index =
-                        terrain_brush == game::world::TerrainBrush::raise ? 0 :
-                        terrain_brush == game::world::TerrainBrush::lower ? 1 :
-                        terrain_brush == game::world::TerrainBrush::flatten ? 2 : 3;
+                        terrain_brush == world::TerrainBrush::raise ? 0 :
+                        terrain_brush == world::TerrainBrush::lower ? 1 :
+                        terrain_brush == world::TerrainBrush::flatten ? 2 : 3;
                     if (ImGui::Combo("Ferramenta", &brush_index, brush_names, 4)) {
                         terrain_brush = brush_index == 0
-                            ? game::world::TerrainBrush::raise
-                            : brush_index == 1 ? game::world::TerrainBrush::lower
-                            : brush_index == 2 ? game::world::TerrainBrush::flatten
-                            : game::world::TerrainBrush::paint_material;
+                            ? world::TerrainBrush::raise
+                            : brush_index == 1 ? world::TerrainBrush::lower
+                            : brush_index == 2 ? world::TerrainBrush::flatten
+                            : world::TerrainBrush::paint_material;
                     }
-                    if (terrain_brush == game::world::TerrainBrush::paint_material) {
+                    if (terrain_brush == world::TerrainBrush::paint_material) {
                         const char* material_names[] = {
                             "Grama", "Terra", "Rocha", "Areia"};
                         int material_index = static_cast<int>(terrain_material);
                         if (ImGui::Combo(
                                 "Material", &material_index, material_names, 4)) {
-                            terrain_material = static_cast<game::world::TerrainMaterial>(
+                            terrain_material = static_cast<world::TerrainMaterial>(
                                 material_index);
                         }
                     }

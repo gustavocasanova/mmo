@@ -1,7 +1,7 @@
 #pragma once
 
 #include "editor/selection.hpp"
-#include "game/world/terrain.hpp"
+#include "world/terrain.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -11,13 +11,13 @@
 namespace mmo::editor {
 
 struct EditorSnapshot {
-    game::world::Terrain terrain;
+    world::Terrain terrain;
     std::vector<SelectableObject> objects;
     std::optional<SelectionId> selected;
 };
 
 [[nodiscard]] EditorSnapshot capture_snapshot(
-    const game::world::Terrain& terrain,
+    const world::Terrain& terrain,
     const SelectionManager& selection);
 
 class EditorHistory {
@@ -31,8 +31,8 @@ public:
     void record(EditorSnapshot before, EditorSnapshot after, std::string coalesce_key);
     void break_coalescing();
     void clear();
-    [[nodiscard]] bool undo(game::world::Terrain& terrain, SelectionManager& selection);
-    [[nodiscard]] bool redo(game::world::Terrain& terrain, SelectionManager& selection);
+    [[nodiscard]] bool undo(world::Terrain& terrain, SelectionManager& selection);
+    [[nodiscard]] bool redo(world::Terrain& terrain, SelectionManager& selection);
 
 private:
     struct Entry {

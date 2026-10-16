@@ -1,4 +1,6 @@
-#include "equipment/equipment.hpp"
+#include "equipment/equipment_manager.hpp"
+
+#include <utility>
 
 #include <algorithm>
 #include <cctype>
@@ -25,7 +27,9 @@ bool finite_transform(const AttachmentTransform& transform)
     }
     const auto& rotation = transform.rotation_offset;
     return std::isfinite(rotation.x) && std::isfinite(rotation.y) &&
-        std::isfinite(rotation.z) && std::isfinite(rotation.w);
+        std::isfinite(rotation.z) && std::isfinite(rotation.w) &&
+        (rotation.x * rotation.x + rotation.y * rotation.y +
+            rotation.z * rotation.z + rotation.w * rotation.w) > 0.000001f;
 }
 
 bool supported_model_path(const std::filesystem::path& path)
@@ -52,8 +56,10 @@ std::optional<std::size_t> EquipmentManager::slot_index(EquipmentSlot slot)
     return index;
 }
 
-bool EquipmentManager::equip(const Equipment& item, std::string* reason)
+bool EquipmentManager::equip(std::shared_ptr<const Equipment> equipment, std::string* reason)
 {
+    if (!equipment) return fail(reason, "equipment must not be null");
+    const EquipmentDefinition& item = equipment->definition();
     const std::optional<std::size_t> index = slot_index(item.slot);
     if (!index) return fail(reason, "equipment slot is invalid");
     if (item.id == 0 || item.name.empty()) return fail(reason, "equipment needs an ID and name");
@@ -75,17 +81,18 @@ bool EquipmentManager::equip(const Equipment& item, std::string* reason)
         }
     }
 
-    equipped_[*index] = item;
+    equipped_[*index] = std::move(equipment);
+    if (reason) reason->clear();
     return true;
 }
 
-std::optional<Equipment> EquipmentManager::unequip(EquipmentSlot slot)
+std::shared_ptr<const Equipment> EquipmentManager::unequip(EquipmentSlot slot)
 {
     const std::optional<std::size_t> index = slot_index(slot);
     if (!index || !equipped_[*index]) {
-        return std::nullopt;
+        return {};
     }
-    std::optional<Equipment> removed = std::move(equipped_[*index]);
+    std::shared_ptr<const Equipment> removed = std::move(equipped_[*index]);
     equipped_[*index].reset();
     return removed;
 }
@@ -93,7 +100,7 @@ std::optional<Equipment> EquipmentManager::unequip(EquipmentSlot slot)
 const Equipment* EquipmentManager::get_equipped(EquipmentSlot slot) const
 {
     const std::optional<std::size_t> index = slot_index(slot);
-    return index && equipped_[*index] ? &*equipped_[*index] : nullptr;
+    return index ? equipped_[*index].get() : nullptr;
 }
 
 bool EquipmentManager::has_equipped(EquipmentSlot slot) const
@@ -103,7 +110,7 @@ bool EquipmentManager::has_equipped(EquipmentSlot slot) const
 
 bool EquipmentManager::clear_slot(EquipmentSlot slot)
 {
-    return unequip(slot).has_value();
+    return static_cast<bool>(unequip(slot));
 }
 
 void EquipmentManager::clear()
@@ -118,10 +125,10 @@ std::vector<ResolvedEquipmentAttachment> EquipmentManager::resolved_attachments(
     std::vector<ResolvedEquipmentAttachment> result;
     for (std::size_t slot = 0; slot < equipped_.size(); ++slot) {
         if (!equipped_[slot]) continue;
-        for (const EquipmentAttachment& attachment : equipped_[slot]->attachments) {
+        for (const EquipmentAttachment& attachment : equipped_[slot]->definition().attachments) {
             const auto bone = skeleton_.find_bone(attachment.bone_name);
             if (bone) {
-                result.push_back({static_cast<EquipmentSlot>(slot), equipped_[slot]->id,
+                result.push_back({static_cast<EquipmentSlot>(slot), equipped_[slot]->definition().id,
                     *bone, attachment.socket_name, attachment.local_transform});
             }
         }

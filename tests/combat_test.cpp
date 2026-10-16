@@ -8,8 +8,8 @@
 #include <vector>
 
 using namespace mmo::game::combat;
-using mmo::game::world::CollisionBox;
-using mmo::game::world::CollisionWorld;
+using mmo::world::CollisionBox;
+using mmo::world::CollisionWorld;
 
 namespace {
 
@@ -250,6 +250,39 @@ void test_los_facing_and_death_cleanup()
     check(f.targets.state(f.registry) == TargetState::TargetDead, "target reported dead");
 }
 
+void test_weapon_replaces_unarmed_stats()
+{
+    Fixture f;
+    const EntityId enemy = f.add_enemy("orc", {0, 0, 2.8f});
+    f.targets.select(f.registry, f.player(), enemy);
+    f.combat.set_auto_attack(true);
+    int swings = 0;
+    const auto swing = [&] { ++swings; return true; };
+    const CombatContext context = f.context({0, 0, 0});
+    f.combat.update(0.016f, f.registry, context, nullptr, swing);
+    check(swings == 0 && f.combat.last_block() == AttackBlock::OutOfRange,
+        "unarmed reach is 2.5m");
+
+    f.combat.set_weapon(WeaponStats{35.0f, 2.0f, 3.0f});
+    f.combat.update(0.016f, f.registry, context, nullptr, swing);
+    check(swings == 1, "weapon range allows the swing");
+    const auto hit = f.combat.on_attack_hit(f.registry, context);
+    check(hit && hit->amount == 35.0f, "weapon damage applied");
+    f.combat.on_swing_end();
+    f.combat.update(1.6f, f.registry, context, nullptr, swing);
+    check(swings == 1, "weapon attack interval is used for the cooldown");
+
+    f.combat.set_weapon(std::nullopt);
+    check(f.combat.active_stats().damage == 20.0f, "unequipping returns to unarmed damage");
+    bool rejected = false;
+    try {
+        f.combat.set_weapon(WeaponStats{10.0f, 0.0f, 2.0f});
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    check(rejected && !f.combat.weapon(), "invalid weapon stats rejected without changing state");
+}
+
 void test_ability_loadouts_resources_and_cooldowns()
 {
     Fixture f;
@@ -362,6 +395,7 @@ int main()
     test_auto_attack_range_cooldown_and_damage_event();
     test_combat_engagement_is_independent_of_auto_attack();
     test_los_facing_and_death_cleanup();
+    test_weapon_replaces_unarmed_stats();
     test_ability_loadouts_resources_and_cooldowns();
     test_weapon_catalog_animations_and_abilities();
     test_ability_revalidates_range_and_line_of_sight();

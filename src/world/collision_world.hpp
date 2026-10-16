@@ -1,11 +1,11 @@
 #pragma once
 
-#include "game/world/movement_bounds.hpp"
+#include "world/movement_bounds.hpp"
 #include "math/transform.hpp"
 
 #include <vector>
 
-namespace mmo::game::world {
+namespace mmo::world {
 
 struct CollisionBox {
     math::Vec3 minimum;

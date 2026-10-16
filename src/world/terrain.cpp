@@ -1,4 +1,4 @@
-#include "game/world/terrain.hpp"
+#include "world/terrain.hpp"
 
 #include <glm/geometric.hpp>
 
@@ -11,7 +11,7 @@
 #include <string>
 #include <utility>
 
-namespace mmo::game::world {
+namespace mmo::world {
 namespace {
 
 constexpr char kFileSignature[] = "MMO_TERRAIN";

@@ -1,4 +1,4 @@
-#include "game/client/combat_camera_controller.hpp"
+#include "apps/client/combat_camera_controller.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -34,7 +34,7 @@ float horizontal_distance(glm::vec3 a, glm::vec3 b)
 bool visible_from(
     glm::vec3 origin,
     glm::vec3 destination,
-    const game::world::CollisionWorld& collision_world)
+    const world::CollisionWorld& collision_world)
 {
     return !game::combat::segment_blocked(
         origin, destination, collision_world.boxes());
@@ -117,7 +117,7 @@ std::optional<game::combat::EntityId> CombatCameraController::choose_lock_target
     const game::combat::TargetSystem& targets,
     const game::combat::CombatEntity& player,
     const CameraPose& view,
-    const game::world::CollisionWorld& collision_world) const
+    const world::CollisionWorld& collision_world) const
 {
     const float maximum_distance = std::min(
         settings_.lock_on_max_distance, targets.settings().max_distance);
@@ -198,8 +198,8 @@ CameraPose CombatCameraController::update(
     const game::combat::CombatEntity* target_entity,
     const CameraInput& input,
     bool player_moving,
-    const game::world::CollisionWorld& collision_world,
-    const game::world::Terrain& terrain)
+    const world::CollisionWorld& collision_world,
+    const world::Terrain& terrain)
 {
     if (!active_) {
         throw std::logic_error("combat camera must be active before updating");
@@ -265,7 +265,7 @@ CameraPose CombatCameraController::update(
 }
 
 void CombatCameraController::keep_camera_above_terrain(
-    CameraPose& pose, const game::world::Terrain& terrain) const
+    CameraPose& pose, const world::Terrain& terrain) const
 {
     const glm::vec3 focus{pose.focus_x, pose.focus_y, pose.focus_z};
     const glm::vec3 eye{pose.eye_x, pose.eye_y, pose.eye_z};

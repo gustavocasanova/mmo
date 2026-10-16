@@ -1,0 +1,22 @@
+MMO_ITEM 1
+# Gameplay rules: read by the client now and by the server later.
+id=1001
+key=wooden_sword
+name=Wooden Training Sword
+slot=MainHand
+weapon.damage=25
+weapon.attack_interval=1.5
+weapon.range=2.6
+
+# Client presentation only; the server ignores visual.* keys.
+visual.model=content/items/wooden_sword/wooden_sword.gltf
+# UAL rig: +Y runs from wrist to fingers, +Z points toward the thumb.
+# Grip at the palm, blade out through the thumb side (90 degrees around X).
+# socket bone px py pz qx qy qz qw
+visual.attach=MainHandGrip hand_r 0 0.075 0 0.70710678 0 0 0.70710678
+visual.attack_clip=Sword_Attack
+visual.attack_duration=1.2
+visual.attack_speed=1.0
+visual.attack_hit_time=0.55
+visual.attack_blend_in=0.1
+visual.attack_blend_out=0.2

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "character/character.hpp"
-#include "game/world/collision_world.hpp"
-#include "game/world/terrain.hpp"
+#include "world/collision_world.hpp"
+#include "world/terrain.hpp"
 
 #include <optional>
 #include <string_view>
@@ -74,8 +74,8 @@ public:
         float delta_seconds,
         CharacterControllerInput input,
         float camera_yaw,
-        const game::world::CollisionWorld& collision_world,
-        const game::world::Terrain* terrain = nullptr);
+        const world::CollisionWorld& collision_world,
+        const world::Terrain* terrain = nullptr);
     [[nodiscard]] bool preview_animation(std::string_view name);
     void set_locomotion_animation_set(
         std::optional<LocomotionAnimationSet> animations);

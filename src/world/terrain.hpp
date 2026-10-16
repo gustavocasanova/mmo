@@ -12,7 +12,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace mmo::game::world {
+namespace mmo::world {
 
 enum class TerrainBrush {
     raise,

@@ -1,8 +1,8 @@
 #include "scene/camera.hpp"
 #include "scene/camera_controller.hpp"
-#include "game/client/combat_camera_controller.hpp"
+#include "apps/client/combat_camera_controller.hpp"
 #include "apps/client/mouse_camera_controls.hpp"
-#include "game/world/collision_world.hpp"
+#include "world/collision_world.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -276,9 +276,9 @@ void test_proportional_zoom_and_invalid_inputs()
 void test_camera_obstacle_collision()
 {
     using namespace mmo;
-    const game::world::CollisionWorld world(
+    const world::CollisionWorld world(
         {},
-        {game::world::CollisionBox{
+        {world::CollisionBox{
             {-1.0f, 0.0f, -2.2f}, {1.0f, 3.0f, -1.8f}}});
     scene::CameraController camera;
     const scene::CameraTarget target{{0.0f, 0.0f, 0.0f}, 0.0f};
@@ -328,7 +328,7 @@ void test_combat_camera_lock_on_and_target_loss()
     (void)registry.create(behind);
 
     game::combat::TargetSystem targets;
-    game::world::CollisionWorld world;
+    world::CollisionWorld world;
     const scene::CameraPose view{0.0f, 2.0f, -5.0f, 0.0f, 1.0f, 0.0f};
     check(camera.choose_lock_target(registry, targets, player, view, world) == centered_id,
         "lock-on did not prefer the target near the center of the camera");
@@ -338,7 +338,7 @@ void test_combat_camera_lock_on_and_target_loss()
         "lock-on did not reuse the official selected target");
 
     targets.clear();
-    game::world::Terrain terrain;
+    world::Terrain terrain;
     const scene::CameraTarget player_view{{0.0f, 0.0f, 0.0f}, 0.0f};
     game::combat::CombatEntity& target = *registry.find(centered_id);
     const scene::CameraPose orbit_pose = camera.update(0.1f, player_view, player,
@@ -400,8 +400,8 @@ void test_combat_camera_keeps_position_while_aiming_at_target()
     settings.orbit.distance_smoothing_seconds = 0.0f;
     game::client::CombatCameraController camera(settings);
     camera.enter(free_camera);
-    game::world::CollisionWorld collision_world;
-    game::world::Terrain terrain;
+    world::CollisionWorld collision_world;
+    world::Terrain terrain;
     const scene::CameraPose orbit_pose = camera.update(0.05f, player_view, player,
         nullptr, {}, false, collision_world, terrain);
     camera.set_lock_target(target.id);
@@ -439,8 +439,8 @@ void test_combat_camera_keeps_manual_yaw_after_release()
     game::combat::CombatEntity player;
     player.id = 1;
     player.faction = game::combat::Faction::Player;
-    const game::world::CollisionWorld collision_world;
-    const game::world::Terrain terrain;
+    const world::CollisionWorld collision_world;
+    const world::Terrain terrain;
     const scene::CameraPose manually_rotated = camera.update(0.1f, player_view,
         player, nullptr, {80.0, -20.0, 0.0, true}, false,
         collision_world, terrain);
@@ -466,10 +466,10 @@ void test_combat_camera_obstruction_and_terrain()
     target.id = 2;
     target.position = {0.0f, 0.0f, 10.0f};
     const scene::CameraTarget player_view{{0.0f, 0.0f, 0.0f}, 0.0f};
-    game::world::Terrain flat_terrain;
-    game::world::CollisionWorld obstructed_world({}, {
-        game::world::CollisionBox{{-1.0f, 0.0f, -2.2f}, {1.0f, 8.0f, -1.8f}},
-        game::world::CollisionBox{{-2.0f, 0.0f, 6.0f}, {2.0f, 8.0f, 7.0f}}});
+    world::Terrain flat_terrain;
+    world::CollisionWorld obstructed_world({}, {
+        world::CollisionBox{{-1.0f, 0.0f, -2.2f}, {1.0f, 8.0f, -1.8f}},
+        world::CollisionBox{{-2.0f, 0.0f, 6.0f}, {2.0f, 8.0f, 7.0f}}});
     scene::CameraController free_camera;
     (void)free_camera.update(0.0f, player_view);
     game::client::CombatCameraController camera(settings);
@@ -495,9 +495,9 @@ void test_combat_camera_obstruction_and_terrain()
     check(distance_on_first_frame < 10.9f,
         "combat camera did not shorten its orbit near a wall");
 
-    game::world::Terrain raised_terrain;
+    world::Terrain raised_terrain;
     check(raised_terrain.apply_brush({0.0f, -1.0f}, 4.0f, 2.0f, 1.0f,
-            game::world::TerrainBrush::raise),
+            world::TerrainBrush::raise),
         "raised terrain fixture could not be created");
     game::combat::CombatEntity hill_player = player;
     hill_player.position.y = raised_terrain.height_at({0.0f, 0.0f});
@@ -508,12 +508,12 @@ void test_combat_camera_obstruction_and_terrain()
     game::client::CombatCameraController terrain_camera(settings);
     terrain_camera.enter(terrain_free_camera);
     scene::CameraPose terrain_pose = terrain_camera.update(0.016f,
-        hill_view, hill_player, nullptr, {}, false, game::world::CollisionWorld{},
+        hill_view, hill_player, nullptr, {}, false, world::CollisionWorld{},
         raised_terrain);
     for (int frame = 0; frame < 12; ++frame) {
         terrain_pose = terrain_camera.update(frame_times[frame % 3], hill_view,
             hill_player, nullptr, {}, frame % 2 == 0,
-            game::world::CollisionWorld{}, raised_terrain);
+            world::CollisionWorld{}, raised_terrain);
     }
     const glm::vec2 camera_ground{terrain_pose.eye_x, terrain_pose.eye_z};
     check(terrain_pose.eye_y >= raised_terrain.height_at(camera_ground) +

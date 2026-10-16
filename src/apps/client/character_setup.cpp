@@ -1,15 +1,16 @@
-#include "game/client/character_animation_setup.hpp"
+#include "apps/client/character_setup.hpp"
 
 #include "animation/layered_animation.hpp"
-#include "assets/model.hpp"
-#include "character/character.hpp"
 
 #include <algorithm>
+#include <iterator>
+#include <optional>
 #include <stdexcept>
 #include <string>
-#include <utility>
+#include <string_view>
+#include <vector>
 
-namespace mmo::game::client {
+namespace mmo::app {
 namespace {
 
 void reverse_keyframes(animation::Vector3Keyframes& keyframes)
@@ -32,13 +33,13 @@ void reverse_keyframes(animation::QuaternionKeyframes& keyframes)
     }
 }
 
+
 animation::BoneMask make_lower_body_mask(const animation::Skeleton& skeleton)
 {
     const std::optional<std::size_t> pelvis = skeleton.find_bone("pelvis");
     const std::optional<std::size_t> spine = skeleton.find_bone("spine_01");
     if (!pelvis || !spine) {
-        throw std::runtime_error(
-            "running animation composition requires pelvis and spine_01 bones");
+        throw std::runtime_error("running animation composition requires pelvis and spine_01 bones");
     }
 
     animation::BoneMask mask(skeleton.bones.size());
@@ -60,6 +61,39 @@ animation::BoneMask make_lower_body_mask(const animation::Skeleton& skeleton)
     return mask;
 }
 
+}
+
+void compose_running_animations(assets::Model& model)
+{
+    const std::vector<animation::AnimationClip> source_clips = model.animations;
+    const animation::BoneMask lower_body_mask = make_lower_body_mask(model.skeleton);
+    const std::size_t jog_index = find_clip_index(source_clips, "Jog_Fwd_Loop");
+    const std::size_t sprint_index = find_clip_index(source_clips, "Sprint_Loop");
+    struct RunningClip {
+        std::string_view target;
+        std::string_view source;
+        std::size_t base_index;
+    };
+    const RunningClip running_clips[] = {
+        {"Jog_Fwd_Loop", "Melee_Run_Forward", jog_index},
+        {"Sprint_Loop", "Melee_Run_Forward", sprint_index},
+        {"Melee_Run_Forward", "Melee_Run_Forward", jog_index},
+        {"Melee_Run_Backward", "Melee_Run_Backward", jog_index},
+        {"Melee_StrafeRun_ForwardLeft", "Melee_StrafeRun_ForwardLeft", jog_index},
+        {"Melee_StrafeRun_ForwardRight", "Melee_StrafeRun_ForwardRight", jog_index},
+        {"Melee_StrafeRun_BackwardLeft", "Melee_StrafeRun_BackwardLeft", jog_index},
+        {"Melee_StrafeRun_BackwardRight", "Melee_StrafeRun_BackwardRight", jog_index},
+    };
+
+    for (const RunningClip& binding : running_clips) {
+        animation::AnimationClip composed = source_clips[binding.base_index];
+        composed.name = binding.target;
+        const animation::AnimationClip& lower_body =
+            source_clips[find_clip_index(source_clips, binding.source)];
+        animation::replace_masked_channels(composed, lower_body, lower_body_mask);
+        const std::size_t target_index = find_clip_index(model.animations, binding.target);
+        model.animations[target_index] = std::move(composed);
+    }
 }
 
 std::size_t find_clip_index(
@@ -105,78 +139,7 @@ std::size_t add_backward_walk_clip(assets::Model& model)
     return model.animations.size() - 1;
 }
 
-void compose_running_animations(assets::Model& model)
-{
-    const std::vector<animation::AnimationClip> source_clips = model.animations;
-    const animation::BoneMask lower_body_mask = make_lower_body_mask(model.skeleton);
-    const std::size_t jog_index = find_clip_index(source_clips, "Jog_Fwd_Loop");
-    const std::size_t sprint_index = find_clip_index(source_clips, "Sprint_Loop");
-    struct RunningClip {
-        std::string_view target;
-        std::string_view source;
-        std::size_t base_index;
-    };
-    const RunningClip running_clips[] = {
-        {"Jog_Fwd_Loop", "Melee_Run_Forward", jog_index},
-        {"Sprint_Loop", "Melee_Run_Forward", sprint_index},
-        {"Melee_Run_Forward", "Melee_Run_Forward", jog_index},
-        {"Melee_Run_Backward", "Melee_Run_Backward", jog_index},
-        {"Melee_StrafeRun_ForwardLeft", "Melee_StrafeRun_ForwardLeft", jog_index},
-        {"Melee_StrafeRun_ForwardRight", "Melee_StrafeRun_ForwardRight", jog_index},
-        {"Melee_StrafeRun_BackwardLeft", "Melee_StrafeRun_BackwardLeft", jog_index},
-        {"Melee_StrafeRun_BackwardRight", "Melee_StrafeRun_BackwardRight", jog_index},
-    };
-
-    for (const RunningClip& binding : running_clips) {
-        const auto source = std::find_if(source_clips.begin(), source_clips.end(),
-            [&binding](const animation::AnimationClip& clip) {
-                return clip.name == binding.source;
-            });
-        const auto target = std::find_if(model.animations.begin(), model.animations.end(),
-            [&binding](const animation::AnimationClip& clip) {
-                return clip.name == binding.target;
-            });
-        if (source == source_clips.end() || target == model.animations.end()) {
-            continue;
-        }
-
-        animation::AnimationClip composed = source_clips[binding.base_index];
-        composed.name = binding.target;
-        animation::replace_masked_channels(composed, *source, lower_body_mask);
-        *target = std::move(composed);
-    }
-}
-
-std::optional<std::string_view> find_weapon_animation(
-    const items::WeaponDefinition& weapon,
-    const std::vector<animation::AnimationClip>& clips)
-{
-    for (const std::string_view name : weapon.attack_animations) {
-        if (name.empty()) {
-            continue;
-        }
-        const auto clip = std::find_if(clips.begin(), clips.end(),
-            [name](const animation::AnimationClip& candidate) {
-                return candidate.name == name;
-            });
-        if (clip != clips.end()) {
-            return clip->name;
-        }
-    }
-    return std::nullopt;
-}
-
-bool has_animation(
-    const std::vector<animation::AnimationClip>& clips,
-    std::string_view name)
-{
-    return std::any_of(clips.begin(), clips.end(),
-        [name](const animation::AnimationClip& clip) {
-            return clip.name == name;
-        });
-}
-
-void bind_locomotion_animations(character::Character& character)
+void bind_animations(character::Character& character)
 {
     animation::AnimationController& controller = character.model().animation();
     const auto& clips = character.model().body().model().animations;

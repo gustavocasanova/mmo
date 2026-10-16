@@ -1,11 +1,11 @@
-#include "game/world/collision_world.hpp"
+#include "world/collision_world.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <utility>
 
-namespace mmo::game::world {
+namespace mmo::world {
 namespace {
 
 bool finite(math::Vec3 value)

@@ -5,7 +5,7 @@
 #include "editor/editor_camera.hpp"
 #include "editor/selection.hpp"
 #include "editor/world_document.hpp"
-#include "game/world/terrain.hpp"
+#include "world/terrain.hpp"
 
 #include <chrono>
 #include <cmath>
@@ -372,7 +372,7 @@ void test_selection_can_add_asset_instances()
 void test_world_document_round_trip()
 {
     using namespace mmo::editor;
-    using namespace mmo::game::world;
+    using namespace mmo::world;
     const auto path = std::filesystem::temp_directory_path() /
         "mmo-world-document-test.mmoworld";
     const auto region_path = std::filesystem::path{path.string() + ".regions"};
@@ -426,7 +426,7 @@ void test_world_document_round_trip()
 void test_editor_history_undoes_and_redoes_world_state()
 {
     using namespace mmo::editor;
-    using namespace mmo::game::world;
+    using namespace mmo::world;
     Terrain terrain;
     SelectionManager selection({
         {3, {{-1.0f, -1.0f, -1.0f}, {1.0f, 1.0f, 1.0f}}},

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "game/combat/combat.hpp"
-#include "game/world/terrain.hpp"
+#include "world/terrain.hpp"
 #include "scene/camera_controller.hpp"
 
 #include <optional>
@@ -56,7 +56,7 @@ public:
         const game::combat::TargetSystem& targets,
         const game::combat::CombatEntity& player,
         const CameraPose& view,
-        const game::world::CollisionWorld& collision_world) const;
+        const world::CollisionWorld& collision_world) const;
     void set_lock_target(game::combat::EntityId target);
     void clear_lock_target();
 
@@ -67,15 +67,15 @@ public:
         const game::combat::CombatEntity* target_entity,
         const CameraInput& input,
         bool player_moving,
-        const game::world::CollisionWorld& collision_world,
-        const game::world::Terrain& terrain);
+        const world::CollisionWorld& collision_world,
+        const world::Terrain& terrain);
 
 private:
     [[nodiscard]] bool in_lock_range(
         const game::combat::CombatEntity& player,
         const game::combat::CombatEntity& target) const;
     void keep_camera_above_terrain(CameraPose& pose,
-        const game::world::Terrain& terrain) const;
+        const world::Terrain& terrain) const;
 
     CombatCameraSettings settings_;
     CameraController camera_;

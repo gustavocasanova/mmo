@@ -2,7 +2,8 @@
 #include "assets/gltf_model_loader.hpp"
 #include "assets/model.hpp"
 #include "character/character.hpp"
-#include "equipment/equipment.hpp"
+#include "equipment/equipment_manager.hpp"
+#include "equipment/basic_equipment.hpp"
 
 #include <array>
 #include <cmath>
@@ -106,13 +107,13 @@ private:
     mmo::assets::Model model_;
 };
 
-mmo::equipment::Equipment make_equipment(
+std::shared_ptr<const mmo::equipment::Equipment> make_equipment(
     std::uint64_t id,
     const char* name,
     mmo::equipment::EquipmentSlot slot,
     std::initializer_list<const char*> bones)
 {
-    mmo::equipment::Equipment item;
+    mmo::equipment::EquipmentDefinition item;
     item.id = id;
     item.name = name;
     item.slot = slot;
@@ -120,7 +121,7 @@ mmo::equipment::Equipment make_equipment(
     for (const char* bone : bones) {
         item.attachments.push_back({bone, bone, {}});
     }
-    return item;
+    return std::make_shared<const mmo::equipment::BasicEquipment>(std::move(item));
 }
 
 void test_skeleton_animation_and_model()
@@ -169,7 +170,7 @@ void test_character_equipment()
     character::CharacterModel character_model(model);
     equipment::EquipmentManager& manager = character_model.equipment();
 
-    const std::array<equipment::Equipment, 16> items{
+    const std::array<std::shared_ptr<const equipment::Equipment>, 16> items{
         make_equipment(1, "Iron Helm", equipment::EquipmentSlot::Helmet, {"Head"}),
         make_equipment(2, "Twin Pauldrons", equipment::EquipmentSlot::Shoulders,
             {"Shoulder_L", "Shoulder_R"}),
@@ -190,25 +191,25 @@ void test_character_equipment()
         make_equipment(16, "Shield", equipment::EquipmentSlot::OffHand, {"Hand_L"}),
     };
 
-    for (const equipment::Equipment& item : items) {
+    for (const auto& item : items) {
         require(manager.equip(item), "all equipment slots should accept valid attachments");
     }
     require(manager.resolved_attachments().size() == 20,
         "multi-bone armor and all accessories should resolve independently");
 
-    equipment::Equipment replacement = make_equipment(101, "Silver Helm",
+    const auto replacement = make_equipment(101, "Silver Helm",
         equipment::EquipmentSlot::Helmet, {"Head"});
     require(manager.equip(replacement), "equipment should replace the current item in its slot");
-    require(manager.get_equipped(equipment::EquipmentSlot::Helmet)->id == 101,
+    require(manager.get_equipped(equipment::EquipmentSlot::Helmet)->definition().id == 101,
         "replacement item should be queryable without rebuilding CharacterModel");
 
-    const equipment::Equipment invalid = make_equipment(102, "Broken Helm",
+    const auto invalid = make_equipment(102, "Broken Helm",
         equipment::EquipmentSlot::Helmet, {"MissingBone"});
     require(!manager.equip(invalid), "missing attachment bone should reject equipment");
-    require(manager.get_equipped(equipment::EquipmentSlot::Helmet)->id == 101,
+    require(manager.get_equipped(equipment::EquipmentSlot::Helmet)->definition().id == 101,
         "failed equip must leave the existing item unchanged");
 
-    require(manager.unequip(equipment::EquipmentSlot::Helmet).has_value(),
+    require(manager.unequip(equipment::EquipmentSlot::Helmet) != nullptr,
         "unequip should return removed equipment data");
     require(!manager.has_equipped(equipment::EquipmentSlot::Helmet), "unequip should clear slot");
     require(manager.clear_slot(equipment::EquipmentSlot::Ring1), "clear_slot should remove an item");

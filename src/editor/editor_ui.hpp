@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game/world/terrain.hpp"
+#include "world/terrain.hpp"
 
 #include <glm/vec2.hpp>
 
@@ -45,8 +45,8 @@ public:
         AssetDatabase& assets,
         const EditorHistory& history,
         bool& terrain_tools_active,
-        game::world::TerrainBrush& terrain_brush,
-        game::world::TerrainMaterial& terrain_material,
+    world::TerrainBrush& terrain_brush,
+    world::TerrainMaterial& terrain_material,
         float& brush_radius,
         float& brush_strength);
     void set_status(std::string message, bool is_error);

@@ -13,17 +13,22 @@
 #include "editor/selection.hpp"
 #include "editor/world_document.hpp"
 #include "editor/world_editor.hpp"
+#include "apps/client/character_setup.hpp"
+#include "apps/client/demo_enemies.hpp"
+#include "apps/client/inventory_window.hpp"
+#include "apps/client/player_items.hpp"
 #include "apps/client/target_frame.hpp"
 #include "game/combat/combat.hpp"
-#include "game/client/character_animation_setup.hpp"
+#include "apps/client/character_animation_setup.hpp"
 #include "game/items/weapons.hpp"
-#include "game/world/collision_world.hpp"
-#include "game/world/terrain.hpp"
+#include "presentation/equipment_presenter.hpp"
+#include "world/collision_world.hpp"
+#include "world/terrain.hpp"
 #include "platform/input_settings.hpp"
 #include "platform/window.hpp"
 #include "renderer/renderer.hpp"
 #include "scene/camera_controller.hpp"
-#include "game/client/combat_camera_controller.hpp"
+#include "apps/client/combat_camera_controller.hpp"
 
 #include <algorithm>
 #include <array>
@@ -48,6 +53,7 @@ namespace {
 constexpr char kTerrainPath[] = "content/worlds/demo.mmoterrain";
 constexpr char kWorldPath[] = "content/worlds/demo.mmoworld";
 constexpr float kPi = 3.14159265f;
+constexpr char kItemsDirectory[] = "content/items";
 
 glm::vec3 cursor_ray(
     const scene::CameraPose& camera,
@@ -73,11 +79,11 @@ glm::vec3 cursor_ray(
         forward + right * (screen_x * aspect * tangent) + up * (screen_y * tangent));
 }
 
-game::world::CollisionWorld make_demo_collision_world()
+world::CollisionWorld make_demo_collision_world()
 {
-    using game::world::CollisionBox;
-    const float half_extent = game::world::Terrain::kHalfExtent;
-    return game::world::CollisionWorld(
+    using world::CollisionBox;
+    const float half_extent = world::Terrain::kHalfExtent;
+    return world::CollisionWorld(
         {-half_extent, half_extent, -half_extent, half_extent},
         {
             CollisionBox{{4.0f, 0.0f, -2.5f}, {4.6f, 3.0f, 2.5f}},
@@ -86,12 +92,12 @@ game::world::CollisionWorld make_demo_collision_world()
 }
 
 std::vector<editor::SelectableObject> make_demo_selectables(
-    const game::world::CollisionWorld& collision_world)
+    const world::CollisionWorld& collision_world)
 {
     std::vector<editor::SelectableObject> objects;
     objects.reserve(collision_world.boxes().size());
     for (std::size_t index = 0; index < collision_world.boxes().size(); ++index) {
-        const game::world::CollisionBox& box = collision_world.boxes()[index];
+        const world::CollisionBox& box = collision_world.boxes()[index];
         objects.push_back({
             static_cast<editor::SelectionId>(index + 1),
             {box.minimum, box.maximum},
@@ -102,35 +108,6 @@ std::vector<editor::SelectableObject> make_demo_selectables(
         });
     }
     return objects;
-}
-
-constexpr float kCorpseSeconds = 5.0f;
-constexpr float kRespawnSeconds = 3.0f;
-
-struct EnemyActor {
-    game::combat::EntityId id = game::combat::kInvalidEntity;
-    std::unique_ptr<character::Character> character;
-    glm::vec3 home{0.0f};
-    std::string name;
-    int level = 1;
-    float yaw = 0.0f;
-    float timer = 0.0f;
-};
-
-// Creates a fresh gameplay entity for the actor and resets its presentation.
-void spawn_enemy(EnemyActor& actor, game::combat::EntityRegistry& registry)
-{
-    game::combat::CombatEntity entity;
-    entity.name = actor.name;
-    entity.level = actor.level;
-    entity.faction = game::combat::Faction::Hostile;
-    entity.position = actor.home;
-    entity.max_hp = 100.0f;
-    entity.hp = 100.0f;
-    actor.id = registry.create(entity);
-    actor.timer = 0.0f;
-    actor.character->transform().position = {actor.home.x, actor.home.y, actor.home.z};
-    (void)actor.character->model().animation().set_state(animation::AnimationState::Idle, 0.0f);
 }
 
 }
@@ -146,7 +123,7 @@ int run_application()
         game::client::CombatCameraController combat_camera;
         editor::WorldEditor world_editor;
         editor::EditorCamera editor_camera;
-        game::world::Terrain terrain;
+        world::Terrain terrain;
         std::optional<editor::WorldDocumentData> startup_world;
         const std::filesystem::path world_path{kWorldPath};
         const std::filesystem::path terrain_path{kTerrainPath};
@@ -160,14 +137,14 @@ int run_application()
             terrain.load(terrain_path);
             std::cout << "[terrain] loaded " << terrain_path.string() << '\n';
         }
-        game::world::CollisionWorld collision_world = make_demo_collision_world();
+        world::CollisionWorld collision_world = make_demo_collision_world();
         editor::SelectionManager selection(make_demo_selectables(collision_world));
         if (startup_world) {
             selection.replace_objects(std::move(startup_world->objects));
         }
         editor::EditorHistory editor_history;
         const auto rebuild_editor_collision = [&]() {
-            std::vector<game::world::CollisionBox> edited_boxes;
+            std::vector<world::CollisionBox> edited_boxes;
             edited_boxes.reserve(selection.objects().size());
             for (const editor::SelectableObject& object : selection.objects()) {
                 if (!object.asset_path.empty()) {
@@ -179,7 +156,7 @@ int run_application()
                     edited_boxes.push_back({bounds->minimum, bounds->maximum});
                 }
             }
-            collision_world = game::world::CollisionWorld(
+            collision_world = world::CollisionWorld(
                 collision_world.bounds(), std::move(edited_boxes));
         };
         if (startup_world) {
@@ -313,46 +290,13 @@ int run_application()
             player_entity.hp = 100.0f;
             player_entity_id = combat_registry.create(player_entity);
         }
-        std::vector<EnemyActor> enemies;
-        {
-            const animation::Vector3& start = player.transform().position;
-            const glm::vec3 homes[] = {
-                {start[0], start[1], start[2] + 3.0f},
-                {start[0] - 6.0f, start[1], start[2] + 9.0f},
-                {start[0] + 7.0f, start[1], start[2] + 14.0f},
-            };
-            const char* const names[] = {"Orc", "Goblin", "Ogre"};
-            for (int index = 0; index < 3; ++index) {
-                EnemyActor actor;
-                actor.character = std::make_unique<character::Character>(body_model);
-                game::client::bind_locomotion_animations(*actor.character);
-                actor.home = homes[index];
-                actor.name = names[index];
-                actor.level = 3 + index * 2;
-                spawn_enemy(actor, combat_registry);
-                enemies.push_back(std::move(actor));
-            }
-        }
-        const auto find_actor = [&enemies](game::combat::EntityId id) -> EnemyActor* {
-            for (EnemyActor& actor : enemies) {
-                if (actor.id == id) {
-                    return &actor;
-                }
-            }
-            return nullptr;
-        };
+        const animation::Vector3& start = player.transform().position;
+        DemoEnemies enemies(body_model, combat_registry, {start[0], start[1], start[2]});
         // Reactions to damage live outside the combat rules: they only drive presentation.
         damage_system.add_listener([&](const game::combat::DamageEvent& event) {
             std::cout << "[combat] damage " << event.amount << " to entity " << event.target
                 << (event.killed ? " (killed)" : "") << '\n';
-            if (EnemyActor* actor = find_actor(event.target)) {
-                auto& animation_controller = actor->character->model().animation();
-                if (event.killed) {
-                    (void)animation_controller.play_animation("Death01", false);
-                } else {
-                    (void)animation_controller.play_animation("Hit_Chest", false);
-                }
-            }
+            enemies.on_damage(event);
         });
         character::CombatSystem combat_system_stats;
         character::CombatController combat(player, character::default_combat_actions());
@@ -459,8 +403,23 @@ int run_application()
         bool previous_debug_toggle = false;
         bool animation_debug = false;
         double next_debug_log = 0.0;
-        renderer.set_character_model(player.model().body().model());
-        renderer.set_skinning_matrices(player.model().animation().pose().skin_matrices);
+        renderer.set_skinned_model(player.model().body().model());
+        presentation::EquipmentPresenter equipment_presenter(assets, renderer);
+        auto& equipment = player.model().equipment();
+        // Items come from content/items/**/*.mmoitem; the player starts with the training sword.
+        // The equipped item sets the model in hand, damage, interval and range; keys 4-8 still
+        // pick the combat class, abilities and the attack variations used without an item.
+        PlayerItems items{std::filesystem::path{kItemsDirectory}};
+        items.give("wooden_sword");
+        if (std::string reason; !items.toggle_main_hand(&reason)) {
+            throw std::runtime_error("could not equip starting weapon: " + reason);
+        }
+        items.apply(equipment, combat_system);
+        std::cout << "[items] loaded " << items.catalog().definitions().size()
+            << " item definitions.\n";
+        bool previous_equipment_toggle = false;
+        bool previous_inventory_toggle = false;
+        bool inventory_open = false;
         renderer.set_terrain(terrain);
         const animation::Vector3& initial_position = player.transform().position;
         scene::CameraPose last_game_camera_pose = camera.update(
@@ -471,7 +430,7 @@ int run_application()
 
         const auto& clips = body_model->animations;
         std::cout << "[app] Movement prototype running. WASD moves relative to the camera; "
-            << "always running; Space jumps; hold left or right mouse and drag to orbit freely (camera smoothly returns behind); right-click selects/engages or exits combat when not dragged; left click selects a target; Tab/Shift+Tab cycles targets; L toggles combat lock-on; 1 toggles auto attack; F3 prints animation layer debug; "
+            << "always running; Space jumps; hold left or right mouse and drag to orbit freely (camera smoothly returns behind); right-click selects/engages or exits combat when not dragged; left click selects a target; Tab/Shift+Tab cycles targets; L toggles combat lock-on; 1 toggles auto attack; F3 prints animation layer debug; F4 equips/removes the main-hand item; I opens the inventory; "
             << "scroll zooms; [ and ] preview every animation; F1 toggles World Editor; "
             << "4 Greatsword, 5 Archer, 6 Mage, 7 Sword+Shield, 8 Axe; Escape exits.\n"
             << "[editor] F1 toggles editor; RMB + mouse looks; WASD moves; Q/E descend/ascend; "
@@ -512,9 +471,9 @@ int run_application()
         float brush_strength = 1.8f;
         float flatten_height = 0.0f;
         glm::vec2 brush_center{0.0f};
-        game::world::TerrainBrush selected_brush = game::world::TerrainBrush::raise;
-        game::world::TerrainMaterial selected_material =
-            game::world::TerrainMaterial::grass;
+        world::TerrainBrush selected_brush = world::TerrainBrush::raise;
+        world::TerrainMaterial selected_material =
+            world::TerrainMaterial::grass;
         double previous_time = window.time_seconds();
 
         while (!window.should_close()) {
@@ -645,51 +604,51 @@ int run_application()
                 std::cout << "[terrain] brush radius " << brush_radius << '\n';
             }
             if (terrain_editor_active) {
-                const game::world::TerrainBrush previous_selection = selected_brush;
-                const game::world::TerrainMaterial previous_material = selected_material;
+                const world::TerrainBrush previous_selection = selected_brush;
+                const world::TerrainMaterial previous_material = selected_material;
                 if (!editor_ui.wants_keyboard_capture()) {
                     if (window.key_pressed(platform::Key::Digit4)) {
                         selected_brush = selected_brush ==
-                                game::world::TerrainBrush::paint_material
-                            ? game::world::TerrainBrush::raise
-                            : game::world::TerrainBrush::paint_material;
+                                world::TerrainBrush::paint_material
+                            ? world::TerrainBrush::raise
+                            : world::TerrainBrush::paint_material;
                     } else if (window.key_pressed(platform::Key::Digit1)) {
-                        if (selected_brush == game::world::TerrainBrush::paint_material) {
-                            selected_material = game::world::TerrainMaterial::grass;
+                        if (selected_brush == world::TerrainBrush::paint_material) {
+                            selected_material = world::TerrainMaterial::grass;
                         } else {
-                            selected_brush = game::world::TerrainBrush::raise;
+                            selected_brush = world::TerrainBrush::raise;
                         }
                     } else if (window.key_pressed(platform::Key::Digit2)) {
-                        if (selected_brush == game::world::TerrainBrush::paint_material) {
-                            selected_material = game::world::TerrainMaterial::dirt;
+                        if (selected_brush == world::TerrainBrush::paint_material) {
+                            selected_material = world::TerrainMaterial::dirt;
                         } else {
-                            selected_brush = game::world::TerrainBrush::lower;
+                            selected_brush = world::TerrainBrush::lower;
                         }
                     } else if (window.key_pressed(platform::Key::Digit3)) {
-                        if (selected_brush == game::world::TerrainBrush::paint_material) {
-                            selected_material = game::world::TerrainMaterial::rock;
+                        if (selected_brush == world::TerrainBrush::paint_material) {
+                            selected_material = world::TerrainMaterial::rock;
                         } else {
-                            selected_brush = game::world::TerrainBrush::flatten;
+                            selected_brush = world::TerrainBrush::flatten;
                         }
                     } else if (window.key_pressed(platform::Key::Digit5) &&
-                        selected_brush == game::world::TerrainBrush::paint_material) {
-                        selected_material = game::world::TerrainMaterial::sand;
+                        selected_brush == world::TerrainBrush::paint_material) {
+                        selected_material = world::TerrainMaterial::sand;
                     }
                 }
                 if (selected_brush != previous_selection ||
                     selected_material != previous_material) {
                     const char* const brush_name =
-                        selected_brush == game::world::TerrainBrush::raise ? "raise" :
-                        selected_brush == game::world::TerrainBrush::lower ? "lower" :
-                        selected_brush == game::world::TerrainBrush::flatten ? "flatten" :
+                        selected_brush == world::TerrainBrush::raise ? "raise" :
+                        selected_brush == world::TerrainBrush::lower ? "lower" :
+                        selected_brush == world::TerrainBrush::flatten ? "flatten" :
                         "material paint";
                     const char* const material_name =
-                        selected_material == game::world::TerrainMaterial::grass ? "grass" :
-                        selected_material == game::world::TerrainMaterial::dirt ? "dirt" :
-                        selected_material == game::world::TerrainMaterial::rock ? "rock" :
+                        selected_material == world::TerrainMaterial::grass ? "grass" :
+                        selected_material == world::TerrainMaterial::dirt ? "dirt" :
+                        selected_material == world::TerrainMaterial::rock ? "rock" :
                         "sand";
                     std::cout << "[terrain] brush " << brush_name;
-                    if (selected_brush == game::world::TerrainBrush::paint_material) {
+                    if (selected_brush == world::TerrainBrush::paint_material) {
                         std::cout << " / " << material_name;
                     }
                     std::cout << '\n';
@@ -812,6 +771,25 @@ int run_application()
             }
             previous_clip_back = clip_back;
             previous_clip_forward = clip_forward;
+            const bool equipment_toggle = window.key_pressed(platform::Key::F4);
+            if (game_mode && !editor_ui.wants_keyboard_capture() &&
+                equipment_toggle && !previous_equipment_toggle) {
+                std::string reason;
+                if (items.toggle_main_hand(&reason)) {
+                    const auto main_hand = items.loadout().equipped(game::items::ItemSlot::MainHand);
+                    std::cout << "[items] main hand "
+                        << (main_hand ? items.catalog().find(*main_hand)->name : "empty") << '\n';
+                } else {
+                    std::cout << "[items] " << reason << '\n';
+                }
+            }
+            previous_equipment_toggle = equipment_toggle;
+            const bool inventory_toggle = window.key_pressed(platform::Key::I);
+            if (game_mode && !editor_ui.wants_keyboard_capture() &&
+                inventory_toggle && !previous_inventory_toggle) {
+                inventory_open = !inventory_open;
+            }
+            previous_inventory_toggle = inventory_toggle;
 
             if (game_mode) {
                 const animation::Vector3& player_position = player.transform().position;
@@ -965,7 +943,8 @@ int run_application()
                 active_abilities->update(delta_seconds);
                 combat_system.update(delta_seconds, combat_registry, combat_context,
                     &collision_world, [&combat] {
-                        return combat.request(character::CombatState::Attack);
+                        // The equipped item's clip, or the selected class's variations.
+                        return combat.request_primary_attack();
                     });
                 controller.set_facing_target(
                     combat_system.desired_facing(combat_registry, combat_context));
@@ -1075,46 +1054,10 @@ int run_application()
                 combat.update();
                 selection.clear();
             }
-            std::vector<renderer::EnemyRenderInstance> render_enemies;
-            for (EnemyActor& actor : enemies) {
-                if (actor.id == game::combat::kInvalidEntity) {
-                    actor.timer -= delta_seconds;
-                    if (actor.timer <= 0.0f) {
-                        spawn_enemy(actor, combat_registry);
-                    }
-                    continue;
-                }
-                game::combat::CombatEntity* entity = combat_registry.find(actor.id);
-                animation::Vector3& e = actor.character->transform().position;
-                e[1] = terrain.height_at({e[0], e[2]});
-                entity->position = {e[0], e[1], e[2]};
+            {
                 const animation::Vector3& p = player.transform().position;
-                if (entity->alive()) {
-                    actor.yaw = std::atan2(p[0] - e[0], p[2] - e[2]);
-                }
-                actor.character->transform().rotation = {
-                    0.0f, std::sin(actor.yaw * 0.5f), 0.0f, std::cos(actor.yaw * 0.5f)};
-                actor.character->model().update(delta_seconds);
-                auto& enemy_animation = actor.character->model().animation();
-                if (entity->alive()) {
-                    if (!enemy_animation.animator().playing()) {
-                        (void)enemy_animation.set_state(animation::AnimationState::Idle, 0.15f);
-                    }
-                } else {
-                    // The corpse stays selectable for a while, then the entity is removed.
-                    actor.timer += delta_seconds;
-                    if (actor.timer >= kCorpseSeconds) {
-                        combat_registry.remove(actor.id);
-                        actor.id = game::combat::kInvalidEntity;
-                        actor.timer = kRespawnSeconds;
-                        continue;
-                    }
-                }
-                render_enemies.push_back({{e[0], e[1], e[2], actor.yaw},
-                    entity->alive() ? glm::vec3{1.0f, 0.5f, 0.5f} : glm::vec3{0.55f},
-                    enemy_animation.pose().skin_matrices});
+                enemies.update(delta_seconds, terrain, {p[0], p[1], p[2]});
             }
-            renderer.set_enemies(render_enemies);
             if (game_mode) {
                 targets.update(combat_registry);
             }
@@ -1268,14 +1211,14 @@ int run_application()
                     brush_center = {hit.x, hit.z};
                     if (left_brush) {
                         if (!previous_brush ||
-                            (selected_brush == game::world::TerrainBrush::flatten &&
+                            (selected_brush == world::TerrainBrush::flatten &&
                                 !previous_flattening)) {
                             flatten_height = terrain.height_at(brush_center);
                         }
                         terrain.preload_regions_near(
                             brush_center,
                             static_cast<int>(std::ceil(
-                                brush_radius / game::world::Terrain::kChunkCells)) + 1);
+                                brush_radius / world::Terrain::kChunkCells)) + 1);
                         frame_before = editor::capture_snapshot(terrain, selection);
                         const bool changed = terrain.apply_brush(
                             brush_center, brush_radius, brush_strength, delta_seconds,
@@ -1295,7 +1238,7 @@ int run_application()
             }
             previous_brush = left_brush && brush_cursor_valid;
             previous_flattening =
-                selected_brush == game::world::TerrainBrush::flatten;
+                selected_brush == world::TerrainBrush::flatten;
 
             const editor::EditorUIActions ui_actions = editor_ui.draw(
                 world_editor.is_active(), selection, asset_database, editor_history,
@@ -1420,8 +1363,33 @@ int run_application()
                 editor_history.break_coalescing();
             }
 
-            renderer.set_skinning_matrices(
-                player.model().animation().pose().skin_matrices);
+            if (game_mode) {
+                const ui::InventoryActions inventory_actions =
+                    ui::draw_inventory_window(items, &inventory_open);
+                std::string reason;
+                if (inventory_actions.equip_index &&
+                    !items.equip(*inventory_actions.equip_index, &reason)) {
+                    std::cout << "[items] " << reason << '\n';
+                }
+                if (inventory_actions.unequip_slot &&
+                    !items.unequip(*inventory_actions.unequip_slot, &reason)) {
+                    std::cout << "[items] " << reason << '\n';
+                }
+            }
+            items.apply(equipment, combat_system);
+
+            const auto& player_pose = player.model().animation().pose();
+            const std::vector<renderer::RigidAttachment> player_attachments =
+                equipment_presenter.attachments(equipment, player_pose);
+            std::vector<renderer::SkinnedInstance> skinned_instances;
+            skinned_instances.push_back({
+                {position[0], position[1], position[2], controller.yaw()},
+                glm::vec3{1.0f},
+                player_pose.skin_matrices,
+                player_attachments,
+            });
+            enemies.append_instances(skinned_instances);
+            renderer.set_skinned_instances(skinned_instances);
 
             {
                 const game::combat::CombatEntity* target = combat_registry.find(targets.current());
@@ -1474,7 +1442,6 @@ int run_application()
                 : std::nullopt;
             renderer.set_terrain(terrain, {camera_pose.focus_x, camera_pose.focus_z});
             renderer.render(framebuffer_width, framebuffer_height,
-                {position[0], position[1], position[2], controller.yaw()},
                 camera_pose, collision_world,
                 editor_mode ? selected_object : std::nullopt,
                 render_boxes,

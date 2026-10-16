@@ -114,7 +114,7 @@ void append_mesh(
 
 }
 
-StaticModelGeometry build_static_model_geometry(const Model& model)
+StaticModelGeometry build_static_model_geometry(const Model& model, StaticModelOrigin origin)
 {
     std::string reason;
     if (!model.validate(&reason)) {
@@ -173,7 +173,8 @@ StaticModelGeometry build_static_model_geometry(const Model& model)
         geometry.minimum = glm::min(geometry.minimum, to_vec3(vertex));
         geometry.maximum = glm::max(geometry.maximum, to_vec3(vertex));
     }
-    const glm::vec3 center = (geometry.minimum + geometry.maximum) * 0.5f;
+    const glm::vec3 center = origin == StaticModelOrigin::BoundsCenter
+        ? (geometry.minimum + geometry.maximum) * 0.5f : glm::vec3{0.0f};
     geometry.minimum -= center;
     geometry.maximum -= center;
     for (ModelVertex& vertex : geometry.vertices) {
