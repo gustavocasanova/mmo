@@ -218,11 +218,13 @@ public:
     [[nodiscard]] const CombatSettings& settings() const { return settings_; }
     [[nodiscard]] CombatSettings& settings() { return settings_; }
     [[nodiscard]] bool auto_attack_enabled() const { return auto_attack_; }
+    [[nodiscard]] bool combat_engaged() const { return combat_engaged_; }
     [[nodiscard]] float attack_timer() const { return timer_; }
     [[nodiscard]] CombatState state() const { return state_; }
     [[nodiscard]] AttackBlock last_block() const { return last_block_; }
 
     void set_auto_attack(bool enabled);
+    void set_combat_engaged(bool engaged);
     void toggle_auto_attack() { set_auto_attack(!auto_attack_); }
 
     [[nodiscard]] AttackBlock evaluate(const EntityRegistry& registry, const CombatContext& context,
@@ -247,6 +249,7 @@ private:
     TargetSystem& targets_;
     DamageSystem& damage_;
     bool auto_attack_ = false;
+    bool combat_engaged_ = false;
     bool swinging_ = false;
     float timer_ = 0.0f;
     EntityId swing_target_ = kInvalidEntity;

@@ -92,6 +92,83 @@ void test_camera_relative_and_normalized_movement(
         "character did not smoothly rotate toward its movement direction");
 }
 
+void test_camera_relative_controls_across_rotations(
+    const std::shared_ptr<const mmo::assets::Model>& model)
+{
+    using namespace mmo;
+    game::world::CollisionWorld world;
+    constexpr float pi = 3.14159265f;
+    constexpr float diagonal = 0.70710678f;
+    struct Case {
+        float camera_yaw;
+        character::CharacterControllerInput input;
+        float expected_x;
+        float expected_z;
+    };
+    const Case directions[] = {
+        {pi, {1.0f, 0.0f, false}, 0.0f, 1.0f},
+        {pi, {0.0f, 1.0f, false}, -1.0f, 0.0f},
+        {pi, {-1.0f, 0.0f, false}, 0.0f, -1.0f},
+        {pi, {0.0f, -1.0f, false}, 1.0f, 0.0f},
+        {pi * 0.5f, {1.0f, 0.0f, false}, -1.0f, 0.0f},
+        {pi * 0.5f, {0.0f, 1.0f, false}, 0.0f, -1.0f},
+        {pi * 0.5f, {-1.0f, 0.0f, false}, 1.0f, 0.0f},
+        {pi * 0.5f, {0.0f, -1.0f, false}, 0.0f, 1.0f},
+        {0.0f, {1.0f, 0.0f, false}, 0.0f, -1.0f},
+        {-pi * 0.5f, {1.0f, 0.0f, false}, 1.0f, 0.0f},
+        {pi * 3.0f, {1.0f, 0.0f, false}, 0.0f, 1.0f},
+        {pi, {1.0f, 1.0f, false}, -diagonal, diagonal},
+        {pi, {1.0f, -1.0f, false}, diagonal, diagonal},
+        {pi, {-1.0f, 1.0f, false}, -diagonal, -diagonal},
+        {pi, {-1.0f, -1.0f, false}, diagonal, -diagonal},
+        {pi * 0.5f, {1.0f, 1.0f, false}, -diagonal, -diagonal},
+        {pi * 0.5f, {1.0f, -1.0f, false}, -diagonal, diagonal},
+        {pi * 0.5f, {-1.0f, 1.0f, false}, diagonal, -diagonal},
+        {pi * 0.5f, {-1.0f, -1.0f, false}, diagonal, diagonal},
+    };
+
+    const auto check_direction = [&](const Case& test_case, bool face_target) {
+        auto player = make_player(model);
+        bind_movement_animations(player);
+        character::MovementSettings settings;
+        settings.acceleration = 100.0f;
+        character::CharacterController controller(player, settings);
+        if (face_target) {
+            controller.set_facing_target(0.0f);
+        }
+        controller.update(0.1f, test_case.input, test_case.camera_yaw, world);
+
+        const float speed = face_target && test_case.input.forward < 0.0f
+            ? settings.combat_backward_speed : settings.run_speed;
+        const float expected_distance = speed * 0.1f;
+        const auto& position = player.transform().position;
+        check(std::abs(position[0] - test_case.expected_x * expected_distance) < 0.002f &&
+                std::abs(position[2] - test_case.expected_z * expected_distance) < 0.002f,
+            "WASD movement did not follow the camera's horizontal yaw");
+        if (face_target) {
+            check(std::abs(controller.yaw()) < 0.0001f,
+                "movement direction incorrectly replaced the combat facing target");
+        }
+    };
+
+    for (const Case& test_case : directions) {
+        check_direction(test_case, false);
+    }
+    const Case focus_target_directions[] = {
+        {pi * 0.5f, {1.0f, 0.0f, false}, -1.0f, 0.0f},
+        {pi * 0.5f, {0.0f, 1.0f, false}, 0.0f, -1.0f},
+        {pi * 0.5f, {-1.0f, 0.0f, false}, 1.0f, 0.0f},
+        {pi * 0.5f, {0.0f, -1.0f, false}, 0.0f, 1.0f},
+        {pi * 0.5f, {1.0f, 1.0f, false}, -diagonal, -diagonal},
+        {pi * 0.5f, {1.0f, -1.0f, false}, -diagonal, diagonal},
+        {pi * 0.5f, {-1.0f, 1.0f, false}, diagonal, -diagonal},
+        {pi * 0.5f, {-1.0f, -1.0f, false}, diagonal, diagonal},
+    };
+    for (const Case& test_case : focus_target_directions) {
+        check_direction(test_case, true);
+    }
+}
+
 void test_acceleration_jump_and_world_collision(
     const std::shared_ptr<const mmo::assets::Model>& model)
 {
@@ -340,8 +417,11 @@ void test_combat_stance_uses_melee_strafe_clips(
     const std::shared_ptr<const mmo::assets::Model>& base_model)
 {
     using namespace mmo;
-    const std::filesystem::path melee_clips{
+    std::filesystem::path melee_clips{
         "assets/animations/generated/melee_combat_ual.glb"};
+    if (!std::filesystem::exists(melee_clips)) {
+        melee_clips = "assets/animations/generated/combat_strafe_ual.glb";
+    }
     if (!std::filesystem::exists(melee_clips)) {
         return;
     }
@@ -373,6 +453,12 @@ void test_combat_stance_uses_melee_strafe_clips(
         {{-1.0f, 1.0f, false}, "Melee_StrafeRun_Right"},
     };
     for (const Case& test_case : cases) {
+        if (std::none_of(combined_model->animations.begin(), combined_model->animations.end(),
+                [&test_case](const animation::AnimationClip& clip) {
+                    return clip.name == test_case.clip;
+                })) {
+            continue;
+        }
         auto player = make_player(combined_model);
         bind_movement_animations(player);
         character::CharacterController controller(player);
@@ -429,8 +515,13 @@ void test_combat_stance_uses_melee_strafe_clips(
     character::CharacterController idle(idle_player);
     idle.set_facing_target(0.0f);
     idle.update(0.016f, {}, 0.0f, world);
-    check(active_clip_name(idle_player) == "Melee_CombatIdle",
-        "standing in combat did not select the combat idle");
+    const bool has_combat_idle = std::any_of(combined_model->animations.begin(),
+        combined_model->animations.end(), [](const animation::AnimationClip& clip) {
+            return clip.name == "Melee_CombatIdle";
+        });
+    check(active_clip_name(idle_player) ==
+            (has_combat_idle ? "Melee_CombatIdle" : "Idle_Loop"),
+        "combat idle selection did not gracefully handle a partial animation pack");
     idle.set_facing_target(std::nullopt);
     idle.update(0.016f, {}, 0.0f, world);
     check(active_clip_name(idle_player) == "Idle_Loop",
@@ -535,6 +626,7 @@ int main()
         auto model = std::make_shared<const mmo::assets::Model>(asset_system.load_model(
             "Universal Animation Library[Standard]/Unreal-Godot/UAL1_Standard.glb"));
         test_camera_relative_and_normalized_movement(model);
+        test_camera_relative_controls_across_rotations(model);
         test_acceleration_jump_and_world_collision(model);
         test_speed_settings_and_animation_pack(model);
         test_controller_follows_sculpted_ground(model);

@@ -77,6 +77,7 @@ add_executable(mmo_client
     src/apps/client/main.cpp
     src/apps/client/application.cpp
     src/apps/client/target_frame.cpp
+    src/game/client/character_animation_setup.cpp
     src/editor/editor_ui.cpp
     src/platform/window.cpp
     src/renderer/renderer.cpp
@@ -84,6 +85,7 @@ add_executable(mmo_client
     src/renderer/opengl/shader.cpp
     src/scene/camera.cpp
     src/scene/camera_controller.cpp
+    src/game/client/combat_camera_controller.cpp
 )
 
 target_include_directories(mmo_client PRIVATE
@@ -108,7 +110,8 @@ if(BUILD_TESTING)
     add_executable(mmo_camera_tests
         tests/camera_tests.cpp
         src/scene/camera.cpp
-        src/scene/camera_controller.cpp)
+        src/scene/camera_controller.cpp
+        src/game/client/combat_camera_controller.cpp)
     target_include_directories(mmo_camera_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_link_libraries(mmo_camera_tests PRIVATE glm::glm)

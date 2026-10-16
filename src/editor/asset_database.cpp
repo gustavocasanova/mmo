@@ -193,11 +193,11 @@ bool AssetDatabase::create_prefab(
                 candidate.relative_path == model_path;
         });
     if (model == entries_.end()) {
-        error = "Select a model from the asset database before creating a prefab.";
+        error = "Selecione um modelo do banco de ativos antes de criar um pré-fabricado.";
         return false;
     }
     if (!has_valid_prefab_name(name)) {
-        error = "Prefab names may contain only letters, numbers, '.', '_' and '-'.";
+        error = "Nomes de pré-fabricados aceitam apenas letras, números, '.', '_' e '-'.";
         return false;
     }
 
@@ -207,19 +207,22 @@ bool AssetDatabase::create_prefab(
     std::error_code filesystem_error;
     if (!std::filesystem::create_directories(absolute_path.parent_path(), filesystem_error) &&
         filesystem_error) {
-        error = "Could not create the prefab directory: " + filesystem_error.message();
+        error = "Não foi possível criar a pasta do pré-fabricado: " +
+            filesystem_error.message();
         return false;
     }
     if (std::filesystem::exists(absolute_path, filesystem_error) || filesystem_error) {
         error = filesystem_error
-            ? "Could not check for an existing prefab: " + filesystem_error.message()
-            : "A prefab with that name already exists.";
+            ? "Não foi possível verificar se o pré-fabricado já existe: " +
+                filesystem_error.message()
+            : "Já existe um pré-fabricado com esse nome.";
         return false;
     }
 
     std::ofstream output(absolute_path, std::ios::binary | std::ios::out);
     if (!output) {
-        error = "Could not write prefab file: " + absolute_path.string();
+        error = "Não foi possível gravar o arquivo do pré-fabricado: " +
+            absolute_path.string();
         return false;
     }
     output << kPrefabHeader << '\n'
@@ -228,7 +231,8 @@ bool AssetDatabase::create_prefab(
     if (!output) {
         std::error_code ignored;
         std::filesystem::remove(absolute_path, ignored);
-        error = "Could not finish writing prefab file: " + absolute_path.string();
+        error = "Não foi possível concluir a gravação do pré-fabricado: " +
+            absolute_path.string();
         return false;
     }
 

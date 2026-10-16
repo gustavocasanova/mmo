@@ -323,6 +323,32 @@ void test_ability_revalidates_range_and_line_of_sight()
         "ability validation checks maximum range");
 }
 
+void test_combat_engagement_is_independent_of_auto_attack()
+{
+    Fixture f;
+    const EntityId enemy = f.add_enemy("orc", {0, 0, 6});
+    check(f.targets.select(f.registry, f.player(), enemy), "select combat target");
+    f.combat.set_combat_engaged(true);
+    int swings = 0;
+    f.combat.update(0.016f, f.registry, f.context({0, 0, 0}), nullptr,
+        [&] { ++swings; return true; });
+    check(f.combat.state() == CombatState::Combat,
+        "explicit combat engagement did not activate combat state");
+    check(!f.combat.auto_attack_enabled() && swings == 0,
+        "combat engagement unexpectedly enabled auto attack");
+
+    f.combat.set_combat_engaged(false);
+    f.combat.update(0.016f, f.registry, f.context({0, 0, 0}), nullptr, {});
+    check(f.combat.state() == CombatState::None,
+        "combat state did not end after explicit disengagement");
+
+    f.combat.set_combat_engaged(true);
+    f.registry.find(enemy)->hp = 0.0f;
+    f.combat.update(0.016f, f.registry, f.context({0, 0, 0}), nullptr, {});
+    check(f.combat.state() == CombatState::None,
+        "combat engagement persisted after its target died");
+}
+
 }
 
 int main()
@@ -334,6 +360,7 @@ int main()
     test_pick_entity();
     test_attack_hit_revalidates_range_visibility_and_current_target();
     test_auto_attack_range_cooldown_and_damage_event();
+    test_combat_engagement_is_independent_of_auto_attack();
     test_los_facing_and_death_cleanup();
     test_ability_loadouts_resources_and_cooldowns();
     test_weapon_catalog_animations_and_abilities();

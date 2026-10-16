@@ -1,5 +1,7 @@
 #include "apps/client/application.hpp"
+#include "apps/client/mouse_camera_controls.hpp"
 
+#include "animation/layered_animation.hpp"
 #include "assets/gltf_model_loader.hpp"
 #include "character/character.hpp"
 #include "character/character_controller.hpp"
@@ -13,6 +15,7 @@
 #include "editor/world_editor.hpp"
 #include "apps/client/target_frame.hpp"
 #include "game/combat/combat.hpp"
+#include "game/client/character_animation_setup.hpp"
 #include "game/items/weapons.hpp"
 #include "game/world/collision_world.hpp"
 #include "game/world/terrain.hpp"
@@ -20,6 +23,7 @@
 #include "platform/window.hpp"
 #include "renderer/renderer.hpp"
 #include "scene/camera_controller.hpp"
+#include "game/client/combat_camera_controller.hpp"
 
 #include <algorithm>
 #include <array>
@@ -43,6 +47,7 @@ namespace {
 
 constexpr char kTerrainPath[] = "content/worlds/demo.mmoterrain";
 constexpr char kWorldPath[] = "content/worlds/demo.mmoworld";
+constexpr float kPi = 3.14159265f;
 
 glm::vec3 cursor_ray(
     const scene::CameraPose& camera,
@@ -66,179 +71,6 @@ glm::vec3 cursor_ray(
     const float screen_y = static_cast<float>(1.0 - 2.0 * cursor_y / window_height);
     return glm::normalize(
         forward + right * (screen_x * aspect * tangent) + up * (screen_y * tangent));
-}
-
-void reverse_keyframes(animation::Vector3Keyframes& keyframes)
-{
-    const float last_time = keyframes.times.empty() ? 0.0f : keyframes.times.back();
-    std::reverse(keyframes.times.begin(), keyframes.times.end());
-    std::reverse(keyframes.values.begin(), keyframes.values.end());
-    for (float& time : keyframes.times) {
-        time = last_time - time;
-    }
-}
-
-void reverse_keyframes(animation::QuaternionKeyframes& keyframes)
-{
-    const float last_time = keyframes.times.empty() ? 0.0f : keyframes.times.back();
-    std::reverse(keyframes.times.begin(), keyframes.times.end());
-    std::reverse(keyframes.values.begin(), keyframes.values.end());
-    for (float& time : keyframes.times) {
-        time = last_time - time;
-    }
-}
-
-std::size_t add_backward_walk_clip(assets::Model& model)
-{
-    const auto existing = std::find_if(model.animations.begin(), model.animations.end(),
-        [](const animation::AnimationClip& clip) {
-            return clip.name == "Walk_Backward_Loop";
-        });
-    if (existing != model.animations.end()) {
-        return static_cast<std::size_t>(std::distance(model.animations.begin(), existing));
-    }
-    const auto forward_walk = std::find_if(model.animations.begin(), model.animations.end(),
-        [](const animation::AnimationClip& clip) { return clip.name == "Walk_Loop"; });
-    if (forward_walk == model.animations.end()) {
-        throw std::runtime_error("Universal Animation Library is missing Walk_Loop");
-    }
-    animation::AnimationClip backward_walk = *forward_walk;
-    backward_walk.name = "Walk_Backward_Loop";
-    for (animation::AnimationChannel& channel : backward_walk.channels) {
-        reverse_keyframes(channel.translations);
-        reverse_keyframes(channel.rotations);
-        reverse_keyframes(channel.scales);
-    }
-    if (!backward_walk.is_valid(model.skeleton.bones.size())) {
-        throw std::runtime_error("Could not construct a valid backward-walking clip");
-    }
-    model.animations.push_back(std::move(backward_walk));
-    return model.animations.size() - 1;
-}
-
-std::size_t find_clip_index(
-    const std::vector<animation::AnimationClip>& clips,
-    std::string_view name);
-
-animation::BoneMask make_lower_body_mask(const animation::Skeleton& skeleton)
-{
-    const std::optional<std::size_t> pelvis = skeleton.find_bone("pelvis");
-    const std::optional<std::size_t> spine = skeleton.find_bone("spine_01");
-    if (!pelvis || !spine) {
-        throw std::runtime_error("running animation composition requires pelvis and spine_01 bones");
-    }
-
-    animation::BoneMask mask(skeleton.bones.size());
-    for (const animation::Bone& bone : skeleton.bones) {
-        bool below_pelvis = false;
-        bool below_spine = false;
-        for (std::size_t current = bone.index; current != animation::kNoBone;
-             current = skeleton.bones[current].parent_index) {
-            below_pelvis = below_pelvis || current == *pelvis;
-            below_spine = below_spine || current == *spine;
-        }
-        if (below_pelvis && !below_spine) {
-            mask.set_weight(bone.index, 1.0f);
-        }
-    }
-    if (mask.active_bone_count() <= 1) {
-        throw std::runtime_error("running animation composition found no leg bones");
-    }
-    return mask;
-}
-
-void compose_running_animations(assets::Model& model)
-{
-    const std::vector<animation::AnimationClip> source_clips = model.animations;
-    const animation::BoneMask lower_body_mask = make_lower_body_mask(model.skeleton);
-    const std::size_t jog_index = find_clip_index(source_clips, "Jog_Fwd_Loop");
-    const std::size_t sprint_index = find_clip_index(source_clips, "Sprint_Loop");
-    struct RunningClip {
-        std::string_view target;
-        std::string_view source;
-        std::size_t base_index;
-    };
-    const RunningClip running_clips[] = {
-        {"Jog_Fwd_Loop", "Melee_Run_Forward", jog_index},
-        {"Sprint_Loop", "Melee_Run_Forward", sprint_index},
-        {"Melee_Run_Forward", "Melee_Run_Forward", jog_index},
-        {"Melee_Run_Backward", "Melee_Run_Backward", jog_index},
-        {"Melee_StrafeRun_ForwardLeft", "Melee_StrafeRun_ForwardLeft", jog_index},
-        {"Melee_StrafeRun_ForwardRight", "Melee_StrafeRun_ForwardRight", jog_index},
-        {"Melee_StrafeRun_BackwardLeft", "Melee_StrafeRun_BackwardLeft", jog_index},
-        {"Melee_StrafeRun_BackwardRight", "Melee_StrafeRun_BackwardRight", jog_index},
-    };
-
-    for (const RunningClip& binding : running_clips) {
-        animation::AnimationClip composed = source_clips[binding.base_index];
-        composed.name = binding.target;
-        const animation::AnimationClip& lower_body =
-            source_clips[find_clip_index(source_clips, binding.source)];
-        animation::replace_masked_channels(composed, lower_body, lower_body_mask);
-        const std::size_t target_index = find_clip_index(model.animations, binding.target);
-        model.animations[target_index] = std::move(composed);
-    }
-}
-
-std::size_t find_clip_index(
-    const std::vector<animation::AnimationClip>& clips,
-    std::string_view name)
-{
-    const auto clip = std::find_if(clips.begin(), clips.end(),
-        [name](const animation::AnimationClip& candidate) {
-            return candidate.name == name;
-        });
-    if (clip == clips.end()) {
-        throw std::runtime_error(
-            "Universal Animation Library is missing required clip: " + std::string(name));
-    }
-    return static_cast<std::size_t>(std::distance(clips.begin(), clip));
-}
-
-std::optional<std::string_view> find_weapon_animation(
-    const game::items::WeaponDefinition& weapon,
-    const std::vector<animation::AnimationClip>& clips)
-{
-    for (const std::string_view name : weapon.attack_animations) {
-        if (name.empty()) continue;
-        const auto clip = std::find_if(clips.begin(), clips.end(),
-            [name](const animation::AnimationClip& candidate) {
-                return candidate.name == name;
-            });
-        if (clip != clips.end()) return clip->name;
-    }
-    return std::nullopt;
-}
-
-bool has_animation(
-    const std::vector<animation::AnimationClip>& clips,
-    std::string_view name)
-{
-    return std::any_of(clips.begin(), clips.end(),
-        [name](const animation::AnimationClip& clip) {
-            return clip.name == name;
-        });
-}
-
-void bind_animations(character::Character& character)
-{
-    animation::AnimationController& controller = character.model().animation();
-    const auto& clips = character.model().body().model().animations;
-    const bool bound =
-        controller.bind_state(animation::AnimationState::Idle,
-            find_clip_index(clips, "Idle_Loop")) &&
-        controller.bind_state(animation::AnimationState::Walk,
-            find_clip_index(clips, "Walk_Loop")) &&
-        controller.bind_state(animation::AnimationState::Run,
-            find_clip_index(clips, "Jog_Fwd_Loop")) &&
-        controller.bind_state(animation::AnimationState::Jump,
-            find_clip_index(clips, "Jump_Loop"));
-    (void)find_clip_index(clips, "Sprint_Loop");
-    (void)find_clip_index(clips, "Jump_Start");
-    (void)find_clip_index(clips, "Jump_Land");
-    if (!bound || !controller.set_state(animation::AnimationState::Idle, 0.0f)) {
-        throw std::runtime_error("Could not bind required locomotion animations");
-    }
 }
 
 game::world::CollisionWorld make_demo_collision_world()
@@ -311,6 +143,7 @@ int run_application()
         renderer::Renderer renderer;
         editor::EditorUI editor_ui(window.native_handle());
         scene::CameraController camera;
+        game::client::CombatCameraController combat_camera;
         editor::WorldEditor world_editor;
         editor::EditorCamera editor_camera;
         game::world::Terrain terrain;
@@ -376,7 +209,7 @@ int run_application()
         }
         const auto save_world = [&]() {
             editor::WorldDocument::save(world_path, terrain, selection.objects());
-            editor_ui.set_status("Saved " + world_path.generic_string(), false);
+            editor_ui.set_status("Mundo salvo: " + world_path.generic_string(), false);
             std::cout << "[world] saved " << world_path.string() << '\n';
         };
         const auto load_world = [&]() {
@@ -397,12 +230,13 @@ int run_application()
             } else if (std::filesystem::exists(terrain_path)) {
                 terrain.load(terrain_path);
             } else {
-                throw std::runtime_error("no saved world or legacy terrain was found");
+                throw std::runtime_error(
+                    "Nenhum mundo salvo ou terreno legado foi encontrado");
             }
             renderer.set_terrain(terrain);
             rebuild_editor_collision();
             editor_history.clear();
-            editor_ui.set_status("Loaded " +
+            editor_ui.set_status("Mundo carregado: " +
                 (std::filesystem::exists(world_path)
                     ? world_path.generic_string() : terrain_path.generic_string()), false);
             std::cout << "[world] loaded "
@@ -411,14 +245,28 @@ int run_application()
         };
         assets::Model loaded_model = assets.load_model(
             "Universal Animation Library[Standard]/Unreal-Godot/UAL1_Standard.glb");
-        const std::size_t backward_walk_index = add_backward_walk_clip(loaded_model);
+        const std::size_t backward_walk_index =
+            game::client::add_backward_walk_clip(loaded_model);
         // Optional locally generated clips are not redistributed with the project.
-        const std::filesystem::path melee_animation_path{
+        std::filesystem::path melee_animation_path{
             "assets/animations/generated/melee_combat_ual.glb"};
+        if (!std::filesystem::exists(melee_animation_path)) {
+            melee_animation_path = "assets/animations/generated/combat_strafe_ual.glb";
+        }
         if (std::filesystem::exists(melee_animation_path)) {
             assets::append_animations(
                 loaded_model, assets.load_model(melee_animation_path));
-            compose_running_animations(loaded_model);
+            const auto left_strafe = std::find_if(
+                loaded_model.animations.begin(), loaded_model.animations.end(),
+                [](const animation::AnimationClip& clip) {
+                    return clip.name == "Melee_StrafeRun_Left";
+                });
+            const std::optional<std::size_t> pelvis =
+                loaded_model.skeleton.find_bone("pelvis");
+            if (left_strafe != loaded_model.animations.end() && pelvis) {
+                animation::hold_root_translation_axis(*left_strafe, *pelvis, 0);
+            }
+            game::client::compose_running_animations(loaded_model);
         } else {
             std::cout << "[animation] optional retargeted melee locomotion is missing; "
                 << "using built-in UAL locomotion. Run "
@@ -437,7 +285,7 @@ int run_application()
         }
         auto body_model = std::make_shared<const assets::Model>(std::move(loaded_model));
         character::Character player(body_model);
-        bind_animations(player);
+        game::client::bind_locomotion_animations(player);
         if (!player.model().animation().bind_state(
                 animation::AnimationState::Walk, backward_walk_index)) {
             throw std::runtime_error("Could not bind the backward-walking animation");
@@ -477,7 +325,7 @@ int run_application()
             for (int index = 0; index < 3; ++index) {
                 EnemyActor actor;
                 actor.character = std::make_unique<character::Character>(body_model);
-                bind_animations(*actor.character);
+                game::client::bind_locomotion_animations(*actor.character);
                 actor.home = homes[index];
                 actor.name = names[index];
                 actor.level = 3 + index * 2;
@@ -529,14 +377,16 @@ int run_application()
                 : selected_weapon->combat_class == game::combat::CombatClass::Archer
                     ? &archer_abilities : &warrior_abilities;
             selected_weapon_animation =
-                find_weapon_animation(*selected_weapon, body_model->animations);
+                game::client::find_weapon_animation(
+                    *selected_weapon, body_model->animations);
             std::vector<character::CombatActionDefinition> actions;
             for (const std::string_view name : selected_weapon->attack_animations) {
-                if (name.empty() || !has_animation(body_model->animations, name)) {
+                if (name.empty() ||
+                    !game::client::has_animation(body_model->animations, name)) {
                     continue;
                 }
                 const animation::AnimationClip& clip = body_model->animations[
-                    find_clip_index(body_model->animations, name)];
+                    game::client::find_clip_index(body_model->animations, name)];
                 const float duration = clip.duration;
                 actions.push_back({character::CombatState::Attack,
                     std::string(name), duration, 1.0f,
@@ -545,7 +395,8 @@ int run_application()
             if (selected_weapon_animation &&
                 selected_weapon->combat_class == game::combat::CombatClass::Mage) {
                 const animation::AnimationClip& clip = body_model->animations[
-                    find_clip_index(body_model->animations, *selected_weapon_animation)];
+                    game::client::find_clip_index(
+                        body_model->animations, *selected_weapon_animation)];
                 const float duration = clip.duration;
                 actions.push_back({character::CombatState::Cast,
                     std::string(*selected_weapon_animation), duration, 1.0f,
@@ -568,7 +419,7 @@ int run_application()
                     longbow_clips.run_right};
                 if (std::all_of(names.begin(), names.end(),
                         [&](std::string_view name) {
-                            return has_animation(body_model->animations, name);
+                            return game::client::has_animation(body_model->animations, name);
                         })) {
                     controller.set_locomotion_animation_set(longbow_clips);
                 } else {
@@ -595,10 +446,13 @@ int run_application()
         double left_drag_distance = 0.0;
         double left_click_x = 0.0;
         double left_click_y = 0.0;
-        float left_drag_movement_yaw = 0.0f;
+        MouseCameraMode previous_mouse_camera_mode = MouseCameraMode::none;
+        float left_camera_movement_yaw = kPi;
+        bool manual_camera_orientation_locked = false;
         bool previous_tab = false;
         bool previous_clear_target_key = false;
         bool previous_auto_attack_key = false;
+        bool previous_lock_on_key = false;
         bool previous_ability_two_key = false;
         bool previous_ability_three_key = false;
         std::array<bool, 5> previous_weapon_keys{};
@@ -617,7 +471,7 @@ int run_application()
 
         const auto& clips = body_model->animations;
         std::cout << "[app] Movement prototype running. WASD moves relative to the camera; "
-            << "always running; Space jumps; hold left or right mouse and drag to orbit freely (camera smoothly returns behind); right-click selects/engages or exits combat when not dragged; left click selects a target; Tab/Shift+Tab cycles targets; 1 toggles auto attack; F3 prints animation layer debug; "
+            << "always running; Space jumps; hold left or right mouse and drag to orbit freely (camera smoothly returns behind); right-click selects/engages or exits combat when not dragged; left click selects a target; Tab/Shift+Tab cycles targets; L toggles combat lock-on; 1 toggles auto attack; F3 prints animation layer debug; "
             << "scroll zooms; [ and ] preview every animation; F1 toggles World Editor; "
             << "4 Greatsword, 5 Archer, 6 Mage, 7 Sword+Shield, 8 Axe; Escape exits.\n"
             << "[editor] F1 toggles editor; RMB + mouse looks; WASD moves; Q/E descend/ascend; "
@@ -655,6 +509,7 @@ int run_application()
         bool terrain_editor_active = false;
         bool brush_cursor_valid = false;
         float brush_radius = 3.0f;
+        float brush_strength = 1.8f;
         float flatten_height = 0.0f;
         glm::vec2 brush_center{0.0f};
         game::world::TerrainBrush selected_brush = game::world::TerrainBrush::raise;
@@ -706,7 +561,8 @@ int run_application()
                     save_world();
                 } catch (const std::exception& error) {
                     const std::string message =
-                        "Could not save world: " + std::string(error.what());
+                        "Não foi possível salvar o mundo: " +
+                        std::string(error.what());
                     std::cerr << "[world] " << message << '\n';
                     editor_ui.set_status(message, true);
                 }
@@ -724,7 +580,8 @@ int run_application()
                     frame_before = editor::capture_snapshot(terrain, selection);
                 } catch (const std::exception& error) {
                     const std::string message =
-                        "Could not load world: " + std::string(error.what());
+                        "Não foi possível carregar o mundo: " +
+                        std::string(error.what());
                     std::cerr << "[world] " << message << '\n';
                     editor_ui.set_status(message, true);
                 }
@@ -746,12 +603,24 @@ int run_application()
             const bool right_dragging =
                 window.right_mouse_pressed() && world_editor.is_active() &&
                 !editor_ui.wants_mouse_capture();
-            const bool right_camera_dragging =
-                game_mode && window.right_mouse_pressed() &&
-                !editor_ui.wants_mouse_capture();
-            const bool left_camera_dragging =
-                game_mode && window.left_mouse_pressed() &&
-                !editor_ui.wants_mouse_capture();
+            const bool camera_mouse_input =
+                game_mode && !editor_ui.wants_mouse_capture();
+            const bool left_mouse_down =
+                camera_mouse_input && window.left_mouse_pressed();
+            const bool right_mouse_down =
+                camera_mouse_input && window.right_mouse_pressed();
+            const MouseCameraMode camera_mode =
+                mouse_camera_mode(left_mouse_down, right_mouse_down);
+            const bool left_camera_dragging = camera_mode == MouseCameraMode::left ||
+                camera_mode == MouseCameraMode::both;
+            const bool right_camera_dragging = camera_mode == MouseCameraMode::right ||
+                camera_mode == MouseCameraMode::both;
+            const bool both_camera_buttons = camera_mode == MouseCameraMode::both;
+            if (camera_mode == MouseCameraMode::left &&
+                previous_mouse_camera_mode != MouseCameraMode::left) {
+                left_camera_movement_yaw = last_game_camera_pose.horizontal_yaw();
+            }
+            previous_mouse_camera_mode = camera_mode;
             if (right_camera_dragging && !previous_right_down) {
                 window.cursor_position(right_click_x, right_click_y);
                 right_drag_distance = 0.0;
@@ -759,7 +628,6 @@ int run_application()
             if (left_camera_dragging && !previous_left_camera_dragging) {
                 window.cursor_position(left_click_x, left_click_y);
                 left_drag_distance = 0.0;
-                left_drag_movement_yaw = camera.yaw();
             }
             window.set_cursor_captured(
                 right_dragging || right_camera_dragging || left_camera_dragging);
@@ -767,6 +635,10 @@ int run_application()
             double mouse_delta_y = 0.0;
             double scroll_delta = 0.0;
             window.consume_mouse_input(mouse_delta_x, mouse_delta_y, scroll_delta);
+            if (rotates_camera(camera_mode) &&
+                (mouse_delta_x != 0.0 || mouse_delta_y != 0.0)) {
+                manual_camera_orientation_locked = true;
+            }
             if (terrain_editor_active && scroll_delta != 0.0) {
                 brush_radius = std::clamp(
                     brush_radius + static_cast<float>(scroll_delta) * 0.5f, 1.0f, 12.0f);
@@ -828,11 +700,18 @@ int run_application()
             const float delta_seconds = std::clamp(
                 static_cast<float>(current_time - previous_time), 0.0f, 0.1f);
             previous_time = current_time;
+            std::optional<game::combat::EntityId> right_click_lock_target;
+            scene::CameraPose camera_pose{};
+            const animation::Vector3& position = player.transform().position;
             if (left_camera_dragging) {
                 left_drag_distance += std::abs(mouse_delta_x) + std::abs(mouse_delta_y);
             }
             if (right_camera_dragging) {
                 right_drag_distance += std::abs(mouse_delta_x) + std::abs(mouse_delta_y);
+            }
+            if (both_camera_buttons) {
+                left_drag_distance = std::max(left_drag_distance, 6.0);
+                right_drag_distance = std::max(right_drag_distance, 6.0);
             }
 
             if (world_editor.is_active() && !terrain_editor_active && !right_dragging &&
@@ -946,6 +825,7 @@ int run_application()
 
                 // Target selection: click picks an entity, clicking empty space clears.
                 const bool target_click = !left_camera_dragging &&
+                    !right_camera_dragging && !editor_ui.wants_mouse_capture() &&
                     previous_left_camera_dragging;
                 if (target_click && !previous_target_click) {
                     int window_width = 0;
@@ -968,10 +848,11 @@ int run_application()
                     left_drag_distance = 0.0;
                 }
                 previous_target_click = target_click;
-                // Either held mouse button orbits freely; an unmoved right click still engages/exits combat.
+                // Right-click still engages combat only when the gesture stayed a click.
                 const bool right_down = right_camera_dragging;
                 if (!right_down && previous_right_down) {
-                    if (right_drag_distance < 6.0) {
+                    if (!left_camera_dragging && !editor_ui.wants_mouse_capture() &&
+                        right_drag_distance < 6.0) {
                         int window_width = 0;
                         int window_height = 0;
                         window.window_size(window_width, window_height);
@@ -988,16 +869,25 @@ int run_application()
                                 combat_registry.find(picked);
                             if (picked_entity != nullptr && picked_entity->alive() &&
                                 picked_entity->faction == game::combat::Faction::Hostile) {
+                                combat_system.set_combat_engaged(true);
+                                right_click_lock_target = picked;
                                 if (selected_weapon_animation) {
                                     combat_system.set_auto_attack(true);
-                                        } else {
-                                            std::cout << "[weapon] bow animation unavailable; "
-                                                << "use archer abilities instead\n";
-                                        }
+                                } else {
+                                    combat_system.set_auto_attack(false);
+                                    std::cout << "[weapon] bow animation unavailable; "
+                                        << "use archer abilities instead\n";
+                                }
                                 std::cout << "[combat] engaged " << picked_entity->name << '\n';
+                            } else {
+                                combat_system.set_auto_attack(false);
+                                combat_system.set_combat_engaged(false);
+                                right_click_lock_target.reset();
                             }
                         } else {
                             combat_system.set_auto_attack(false);
+                            combat_system.set_combat_engaged(false);
+                            right_click_lock_target.reset();
                             std::cout << "[combat] left combat\n";
                         }
                     }
@@ -1020,6 +910,8 @@ int run_application()
                 if (clear_target_key && !previous_clear_target_key) {
                     targets.clear();
                     combat_system.set_auto_attack(false);
+                    combat_system.set_combat_engaged(false);
+                    right_click_lock_target.reset();
                 }
                 previous_clear_target_key = clear_target_key;
                 const bool auto_attack_key = !editor_ui.wants_keyboard_capture() &&
@@ -1078,9 +970,101 @@ int run_application()
                 controller.set_facing_target(
                     combat_system.desired_facing(combat_registry, combat_context));
                 controller.set_facing_rotation_speed(combat_system.settings().rotation_speed);
+                const game::combat::CombatState combat_state = combat_system.state();
+                const bool combat_camera_active =
+                    combat_state == game::combat::CombatState::Combat ||
+                    combat_state == game::combat::CombatState::Attacking ||
+                    combat_state == game::combat::CombatState::Casting;
+                if (combat_camera_active && !combat_camera.active()) {
+                    combat_camera.enter(camera);
+                } else if (!combat_camera_active && combat_camera.active()) {
+                    combat_camera.leave(camera);
+                }
+                if (combat_camera.active() && right_click_lock_target) {
+                    combat_camera.set_lock_target(*right_click_lock_target);
+                    right_click_lock_target.reset();
+                }
+
+                const bool moving_character =
+                    std::abs(input.forward) > 0.001f || std::abs(input.strafe) > 0.001f;
+                const bool lock_on_key = !editor_ui.wants_keyboard_capture() &&
+                    window.key_pressed(platform::Key::L);
+                if (lock_on_key && !previous_lock_on_key && combat_camera.active()) {
+                    right_click_lock_target.reset();
+                    if (combat_camera.locked()) {
+                        combat_camera.clear_lock_target();
+                    } else {
+                        game::combat::CombatEntity& camera_player_entity =
+                            *combat_registry.find(player_entity_id);
+                        const std::optional<game::combat::EntityId> selected =
+                            combat_camera.choose_lock_target(combat_registry, targets,
+                                camera_player_entity, last_game_camera_pose, collision_world);
+                        if (selected) {
+                            if (*selected != targets.current()) {
+                                (void)targets.select(
+                                    combat_registry, camera_player_entity, *selected);
+                            }
+                            combat_camera.set_lock_target(*selected);
+                        }
+                    }
+                }
+                previous_lock_on_key = lock_on_key;
+
+                if (combat_camera.active()) {
+                    game::combat::CombatEntity& camera_player_entity =
+                        *combat_registry.find(player_entity_id);
+                    if (combat_camera.locked() &&
+                        targets.current() != *combat_camera.lock_target()) {
+                        const game::combat::CombatEntity* selected_target =
+                            combat_registry.find(targets.current());
+                        if (selected_target != nullptr &&
+                            game::combat::TargetSystem::is_valid_target(
+                                *selected_target, camera_player_entity)) {
+                            combat_camera.set_lock_target(selected_target->id);
+                        } else {
+                            combat_camera.clear_lock_target();
+                        }
+                    }
+                    const game::combat::CombatEntity* locked_target =
+                        combat_camera.locked()
+                        ? combat_registry.find(*combat_camera.lock_target())
+                        : nullptr;
+                    last_game_camera_pose = combat_camera.update(
+                        delta_seconds,
+                        {{position[0], position[1], position[2]}, controller.yaw()},
+                        camera_player_entity, locked_target,
+                        {mouse_delta_x, mouse_delta_y, scroll_delta,
+                            rotates_camera(camera_mode)},
+                        moving_character, collision_world, terrain);
+                } else {
+                    (void)camera.apply_input({
+                        mouse_delta_x, mouse_delta_y, scroll_delta,
+                        rotates_camera(camera_mode)});
+                    camera.set_follow_target_yaw(
+                        !follows_character(camera_mode, moving_character,
+                            manual_camera_orientation_locked)
+                        ? std::nullopt
+                        : std::optional<float>{controller.yaw() + 3.14159265f});
+                    last_game_camera_pose = camera.update(
+                        delta_seconds,
+                        {{position[0], position[1], position[2]}, controller.yaw()},
+                        &collision_world);
+                }
+                camera_pose = last_game_camera_pose;
+                if (rebase_left_look_heading(
+                        camera_mode, input.forward, input.strafe)) {
+                    left_camera_movement_yaw = camera_pose.horizontal_yaw();
+                }
+                if (const std::optional<float> manual_facing =
+                        manual_facing_yaw(camera_mode, camera_pose.horizontal_yaw())) {
+                    controller.set_facing_target(*manual_facing);
+                }
+                character::CharacterControllerInput movement_input = input;
+                movement_input.forward = forward_input(input.forward, camera_mode);
                 controller.update(
-                    delta_seconds, input,
-                    left_camera_dragging ? left_drag_movement_yaw : camera.yaw(),
+                    delta_seconds, movement_input,
+                    movement_yaw(camera_mode, camera_pose.horizontal_yaw(),
+                        left_camera_movement_yaw),
                     collision_world, &terrain);
                 player_entity.position = {
                     player.transform().position[0],
@@ -1157,24 +1141,13 @@ int run_application()
                     << " | mask bones=" << mixer.mask().active_bone_count()
                     << " | layers=" << mixer.active_layer_count() << '\n';
             }
-            const animation::Vector3& position = player.transform().position;
-            scene::CameraPose camera_pose;
             if (game_mode) {
-                (void)camera.apply_input({
-                    mouse_delta_x, mouse_delta_y, scroll_delta,
-                    left_camera_dragging || right_camera_dragging});
-                const bool moving_character =
-                    std::abs(input.forward) > 0.001f || std::abs(input.strafe) > 0.001f;
-                camera.set_follow_target_yaw(
-                    left_camera_dragging || right_camera_dragging || moving_character
-                    ? std::nullopt
-                    : std::optional<float>{controller.yaw() + 3.14159265f});
-                last_game_camera_pose = camera.update(
-                    delta_seconds,
-                    {{position[0], position[1], position[2]}, controller.yaw()},
-                    &collision_world);
                 camera_pose = last_game_camera_pose;
             } else {
+                previous_lock_on_key = false;
+                if (combat_camera.active()) {
+                    combat_camera.leave(camera);
+                }
                 editor::EditorCameraInput editor_input;
                 if (!editor_ui.wants_keyboard_capture() &&
                     !editor_ui.wants_mouse_capture()) {
@@ -1305,7 +1278,7 @@ int run_application()
                                 brush_radius / game::world::Terrain::kChunkCells)) + 1);
                         frame_before = editor::capture_snapshot(terrain, selection);
                         const bool changed = terrain.apply_brush(
-                            brush_center, brush_radius, 1.8f, delta_seconds,
+                            brush_center, brush_radius, brush_strength, delta_seconds,
                             selected_brush, flatten_height, selected_material);
                         if (changed) {
                             renderer.set_terrain(terrain, {camera_pose.focus_x, camera_pose.focus_z});
@@ -1326,7 +1299,8 @@ int run_application()
 
             const editor::EditorUIActions ui_actions = editor_ui.draw(
                 world_editor.is_active(), selection, asset_database, editor_history,
-                terrain_editor_active, selected_brush, selected_material, brush_radius);
+                terrain_editor_active, selected_brush, selected_material, brush_radius,
+                brush_strength);
             if (ui_actions.world_changed) {
                 world_changed_this_frame = true;
                 if (history_key.empty()) {
@@ -1339,7 +1313,8 @@ int run_application()
                     save_world();
                 } catch (const std::exception& error) {
                     const std::string message =
-                        "Could not save world: " + std::string(error.what());
+                        "Não foi possível salvar o mundo: " +
+                        std::string(error.what());
                     std::cerr << "[world] " << message << '\n';
                     editor_ui.set_status(message, true);
                 }
@@ -1351,7 +1326,8 @@ int run_application()
                     world_changed_this_frame = false;
                 } catch (const std::exception& error) {
                     const std::string message =
-                        "Could not load world: " + std::string(error.what());
+                        "Não foi possível carregar o mundo: " +
+                        std::string(error.what());
                     std::cerr << "[world] " << message << '\n';
                     editor_ui.set_status(message, true);
                 }
@@ -1399,7 +1375,7 @@ int run_application()
                             {camera_pose.eye_x, camera_pose.eye_y, camera_pose.eye_z},
                             direction, 500.0f, hit)) {
                         throw std::runtime_error(
-                            "could not place asset: the viewport ray did not hit the terrain");
+                            "Não foi possível posicionar o ativo: o cursor não atingiu o terreno");
                     }
                     const std::string model_key =
                         asset_entry->model_path.generic_string();
@@ -1429,7 +1405,8 @@ int run_application()
                         false);
                 } catch (const std::exception& error) {
                     const std::string message =
-                        "Could not add asset: " + std::string(error.what());
+                        "Não foi possível adicionar o ativo: " +
+                        std::string(error.what());
                     std::cerr << "[assets] " << message << '\n';
                     editor_ui.set_status(message, true);
                 }

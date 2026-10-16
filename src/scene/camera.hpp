@@ -9,6 +9,8 @@ struct CameraPose {
     float field_of_view = 1.04719755f;
     float near_plane = 0.05f;
     float far_plane = 1000.0f;
+
+    [[nodiscard]] float horizontal_yaw() const;
 };
 class Camera {
 public:

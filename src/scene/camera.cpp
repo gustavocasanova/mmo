@@ -3,6 +3,11 @@
 #include <stdexcept>
 
 namespace mmo::scene {
+float CameraPose::horizontal_yaw() const
+{
+    return std::atan2(eye_x - focus_x, eye_z - focus_z);
+}
+
 void Camera::set_pose(CameraPose pose)
 {
     const math::Vec3 eye{pose.eye_x, pose.eye_y, pose.eye_z};

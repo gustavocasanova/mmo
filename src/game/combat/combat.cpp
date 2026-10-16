@@ -546,6 +546,11 @@ void CombatSystem::set_auto_attack(bool enabled)
     auto_attack_ = enabled;
 }
 
+void CombatSystem::set_combat_engaged(bool engaged)
+{
+    combat_engaged_ = engaged;
+}
+
 AttackBlock CombatSystem::evaluate(const EntityRegistry& registry, const CombatContext& context,
     const world::CollisionWorld* world) const
 {
@@ -602,7 +607,14 @@ void CombatSystem::update(float delta_seconds, const EntityRegistry& registry,
     timer_ = std::max(0.0f, timer_ - delta_seconds);
     if (!context.player_alive) {
         auto_attack_ = false;
+        combat_engaged_ = false;
         swinging_ = false;
+    }
+    const CombatEntity* player = registry.find(context.player_id);
+    const CombatEntity* target = registry.find(targets_.current());
+    if (combat_engaged_ && (player == nullptr || target == nullptr ||
+            !TargetSystem::is_valid_target(*target, *player))) {
+        combat_engaged_ = false;
     }
     // Auto attack follows a live hostile target; corpse selection remains available for UI.
     if (auto_attack_ && evaluate_target(
@@ -625,7 +637,7 @@ void CombatSystem::update(float delta_seconds, const EntityRegistry& registry,
         state_ = CombatState::Dead;
     } else if (swinging_) {
         state_ = CombatState::Attacking;
-    } else if (auto_attack_) {
+    } else if (combat_engaged_ || auto_attack_) {
         state_ = CombatState::Combat;
     } else {
         state_ = CombatState::None;
@@ -659,7 +671,8 @@ void CombatSystem::on_swing_end()
 std::optional<float> CombatSystem::desired_facing(
     const EntityRegistry& registry, const CombatContext& context) const
 {
-    if (!settings_.combat_facing_enabled || !auto_attack_ || !context.player_alive) {
+    if (!settings_.combat_facing_enabled ||
+        (!combat_engaged_ && !auto_attack_) || !context.player_alive) {
         return std::nullopt;
     }
     const CombatEntity* target = registry.find(targets_.current());

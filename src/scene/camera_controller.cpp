@@ -34,6 +34,9 @@ CameraController::CameraController(CameraSettings settings)
         !std::isfinite(settings_.follow_rotation_smoothing_seconds) ||
         !std::isfinite(settings_.collision_radius) ||
         !std::isfinite(settings_.minimum_collision_distance) ||
+        !std::isfinite(settings_.field_of_view) ||
+        !std::isfinite(settings_.near_plane) ||
+        !std::isfinite(settings_.far_plane) ||
         !std::isfinite(settings_.target_offset.x) ||
         !std::isfinite(settings_.target_offset.y) ||
         !std::isfinite(settings_.target_offset.z)) {
@@ -74,25 +77,56 @@ CameraController::CameraController(CameraSettings settings)
 
 float CameraController::apply_input(const CameraInput& input)
 {
+    const float mouse_delta_x = static_cast<float>(input.mouse_delta_x);
+    const float mouse_delta_y = static_cast<float>(input.mouse_delta_y);
+    const float scroll_delta = static_cast<float>(input.scroll_delta);
+    if (!std::isfinite(mouse_delta_x) || !std::isfinite(mouse_delta_y) ||
+        !std::isfinite(scroll_delta)) {
+        throw std::invalid_argument("camera input must be finite");
+    }
+
     float yaw_delta = 0.0f;
     if (input.rotate_camera) {
-        yaw_delta = static_cast<float>(input.mouse_delta_x) *
-            settings_.horizontal_sensitivity;
+        yaw_delta = mouse_delta_x * settings_.horizontal_sensitivity;
         yaw_ = wrap_angle(yaw_ + yaw_delta);
 
         const float vertical_direction = settings_.invert_vertical ? -1.0f : 1.0f;
         pitch_ = std::clamp(
-            pitch_ + static_cast<float>(input.mouse_delta_y) *
-                settings_.vertical_sensitivity * vertical_direction,
+            pitch_ + mouse_delta_y * settings_.vertical_sensitivity * vertical_direction,
             settings_.minimum_pitch,
             settings_.maximum_pitch);
     }
 
     desired_distance_ = std::clamp(
-        desired_distance_ - static_cast<float>(input.scroll_delta) * settings_.zoom_speed,
+        desired_distance_ * std::exp(-scroll_delta * settings_.zoom_speed),
         settings_.minimum_distance,
         settings_.maximum_distance);
     return settings_.rotate_target_with_camera ? yaw_delta : 0.0f;
+}
+
+void CameraController::adopt_view_from(const CameraController& source)
+{
+    yaw_ = wrap_angle(source.yaw_);
+    pitch_ = std::clamp(source.pitch_, settings_.minimum_pitch, settings_.maximum_pitch);
+    current_yaw_ = wrap_angle(source.current_yaw_);
+    current_pitch_ = std::clamp(
+        source.current_pitch_, settings_.minimum_pitch, settings_.maximum_pitch);
+    desired_distance_ = std::clamp(
+        source.desired_distance_, settings_.minimum_distance, settings_.maximum_distance);
+    current_distance_ = std::clamp(
+        source.current_distance_, settings_.minimum_distance, settings_.maximum_distance);
+    current_focus_ = source.current_focus_;
+    initialized_ = source.initialized_;
+    follow_target_yaw_.reset();
+}
+
+void CameraController::set_desired_distance(float distance)
+{
+    if (!std::isfinite(distance)) {
+        throw std::invalid_argument("camera distance must be finite");
+    }
+    desired_distance_ = std::clamp(
+        distance, settings_.minimum_distance, settings_.maximum_distance);
 }
 
 void CameraController::reset_behind_target(float target_yaw)
@@ -104,6 +138,9 @@ void CameraController::reset_behind_target(float target_yaw)
 
 void CameraController::set_follow_target_yaw(std::optional<float> target_yaw)
 {
+    if (target_yaw && !std::isfinite(*target_yaw)) {
+        throw std::invalid_argument("camera follow yaw must be finite");
+    }
     follow_target_yaw_ = target_yaw
         ? std::optional<float>{wrap_angle(*target_yaw)}
         : std::nullopt;
@@ -114,6 +151,11 @@ CameraPose CameraController::update(
     const CameraTarget& target,
     const game::world::CollisionWorld* collision_world)
 {
+    if (!std::isfinite(delta_seconds) ||
+        !std::isfinite(target.position.x) || !std::isfinite(target.position.y) ||
+        !std::isfinite(target.position.z) || !std::isfinite(target.yaw)) {
+        throw std::invalid_argument("camera target and elapsed time must be finite");
+    }
     const float elapsed = std::max(delta_seconds, 0.0f);
     if (follow_target_yaw_) {
         const float follow_factor = settings_.follow_rotation_smoothing_seconds <= 0.0f
@@ -202,11 +244,6 @@ float CameraController::desired_distance() const
 }
 
 float CameraController::current_distance() const
-{
-    return current_distance_;
-}
-
-float CameraController::actual_distance() const
 {
     return current_distance_;
 }

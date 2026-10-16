@@ -72,6 +72,38 @@ void test_bone_mask_branch()
     check(threw, "unknown mask root must be rejected");
 }
 
+void test_root_translation_axis_is_held()
+{
+    const Skeleton skeleton = make_skeleton();
+    const std::size_t pelvis = *skeleton.find_bone("pelvis");
+    AnimationClip clip;
+    clip.name = "left_strafe";
+    clip.duration = 1.0f;
+    AnimationChannel rotation_channel;
+    rotation_channel.bone_index = pelvis;
+    rotation_channel.rotations.times = {0.0f, 1.0f};
+    rotation_channel.rotations.values = {{0.0f, 0.0f, 0.0f, 1.0f},
+        {0.0f, 0.0f, 0.0f, 1.0f}};
+    clip.channels.push_back(std::move(rotation_channel));
+
+    AnimationChannel channel;
+    channel.bone_index = pelvis;
+    channel.translations.times = {0.0f, 0.5f, 1.0f};
+    channel.translations.values = {{0.0f, 0.0f, 0.0f}, {2.0f, 1.0f, 0.5f},
+        {3.0f, 0.0f, 1.0f}};
+    clip.channels.push_back(std::move(channel));
+
+    hold_root_translation_axis(clip, pelvis, 0);
+
+    const auto& translations = clip.channels.back().translations.values;
+    check(translations[0][0] == 0.0f && translations[1][0] == 0.0f &&
+            translations[2][0] == 0.0f,
+        "root lateral motion must not move the character model");
+    check(translations[1][1] == 1.0f && translations[1][2] == 0.5f &&
+            translations[2][2] == 1.0f,
+        "holding lateral root motion must preserve vertical and forward animation");
+}
+
 void test_blend_is_shortest_path_and_weighted()
 {
     Transform a;
@@ -231,6 +263,7 @@ int main()
 {
     try {
         test_bone_mask_branch();
+        test_root_translation_axis_is_held();
         test_blend_is_shortest_path_and_weighted();
         test_masked_animation_channels_replace_lower_body_only();
         test_layers_move_only_masked_bones_and_emit_events();

@@ -111,6 +111,24 @@ std::vector<std::string> BoneMask::active_bone_names(const Skeleton& skeleton) c
     return names;
 }
 
+void hold_root_translation_axis(
+    AnimationClip& clip, std::size_t root_bone_index, std::size_t axis)
+{
+    if (axis >= 3) {
+        throw std::out_of_range("root translation axis out of range");
+    }
+    for (AnimationChannel& channel : clip.channels) {
+        if (channel.bone_index != root_bone_index || channel.translations.values.empty()) {
+            continue;
+        }
+
+        const float initial_value = channel.translations.values.front()[axis];
+        for (Vector3& translation : channel.translations.values) {
+            translation[axis] = initial_value;
+        }
+    }
+}
+
 void replace_masked_channels(
     AnimationClip& target, const AnimationClip& source, const BoneMask& mask)
 {

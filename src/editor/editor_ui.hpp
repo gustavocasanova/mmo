@@ -47,7 +47,8 @@ public:
         bool& terrain_tools_active,
         game::world::TerrainBrush& terrain_brush,
         game::world::TerrainMaterial& terrain_material,
-        float& brush_radius);
+        float& brush_radius,
+        float& brush_strength);
     void set_status(std::string message, bool is_error);
     void render();
     [[nodiscard]] bool wants_mouse_capture() const;
@@ -62,6 +63,8 @@ private:
     std::filesystem::path selected_asset_path_;
     std::string status_;
     bool status_is_error_ = false;
+    bool scene_panel_visible_ = true;
+    bool inspector_panel_visible_ = true;
 };
 
 }

@@ -38,6 +38,10 @@ private:
 void replace_masked_channels(AnimationClip& target, const AnimationClip& source,
     const BoneMask& mask);
 
+// Holds one root translation axis at its first key to remove root motion on that axis.
+void hold_root_translation_axis(AnimationClip& clip, std::size_t root_bone_index,
+    std::size_t axis);
+
 enum class AnimationEventType {
     ActionStart,
     ActionHit,

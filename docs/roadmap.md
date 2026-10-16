@@ -66,7 +66,7 @@ Critério de aceite: uma cena explorável com modelo e textura carregados de arq
 
 Implementar entidades, animações, atributos, criaturas controladas por IA, habilidades, vida, dano e inventário local.
 
-A main adicionou Character/CharacterModel/CharacterBody, atributos básicos, skeleton, avaliação de animação/crossfade e EquipmentManager, testados com modelos sintéticos. A cena equipada ainda é procedural e estática; o componente anterior de animação em blocos continua separado. O movimento local e ItemDefinition/ItemStack permanecem nos módulos game. O combate offline agora inclui seleção, auto-ataque e uma arquitetura de habilidades com loadouts iniciais de guerreiro, mago e arqueiro, recursos e cooldowns; inventário e IA continuam pendentes.
+A main adicionou Character/CharacterModel/CharacterBody, atributos básicos, skeleton, avaliação de animação/crossfade e EquipmentManager, testados com modelos sintéticos. O cliente usa o personagem rigged e o movimento local; os protótipos duplicados de personagem e visualização procedural foram removidos. O combate offline inclui seleção, auto-ataque e habilidades com loadouts iniciais de guerreiro, mago e arqueiro, recursos e cooldowns; inventário e IA continuam pendentes.
 
 - [x] Habilidades CPU extensíveis: definições centralizadas, validação de alvo/alcance/linha de visão/orientação, recursos, cooldowns, dano e loadouts distintos para guerreiro, mago e arqueiro.
 - [ ] Barra de habilidades visual com execução sincronizada à animação de lançamento e efeitos projetados.

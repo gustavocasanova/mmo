@@ -26,7 +26,7 @@ struct CameraSettings {
     float vertical_sensitivity = 0.005f;
     float minimum_pitch = -1.3962634f;
     float maximum_pitch = 1.3962634f;
-    float zoom_speed = 5.0f;
+    float zoom_speed = 0.12f;
     float distance_smoothing_seconds = 0.12f;
     float rotation_smoothing_seconds = 0.06f;
     float follow_rotation_smoothing_seconds = 0.45f;
@@ -51,6 +51,8 @@ public:
     explicit CameraController(CameraSettings settings = {});
 
     float apply_input(const CameraInput& input);
+    void adopt_view_from(const CameraController& source);
+    void set_desired_distance(float distance);
     void reset_behind_target(float target_yaw);
     void set_follow_target_yaw(std::optional<float> target_yaw);
     [[nodiscard]] CameraPose update(
@@ -62,7 +64,6 @@ public:
     [[nodiscard]] float pitch() const;
     [[nodiscard]] float desired_distance() const;
     [[nodiscard]] float current_distance() const;
-    [[nodiscard]] float actual_distance() const;
 
 private:
     CameraSettings settings_;

@@ -321,14 +321,9 @@ bool CharacterController::select_combat_animation(
     if (!facing_target_) {
         return false;
     }
-    const auto& clips = character_.model().body().model().animations;
-    const bool has_combat_locomotion = std::any_of(
-        clips.begin(), clips.end(), [](const animation::AnimationClip& clip) {
-            return clip.name == "Melee_CombatIdle";
-        });
     if (!moving) {
         combat_sector_valid_ = false;
-        return has_combat_locomotion && play_loop("Melee_CombatIdle");
+        return play_loop("Melee_CombatIdle");
     }
     constexpr float kRadiansToDegrees = 57.29578f;
     constexpr float kSectorDegrees = 45.0f;
@@ -344,9 +339,6 @@ bool CharacterController::select_combat_animation(
     }
     combat_sector_ = sector;
     combat_sector_valid_ = true;
-    if (!has_combat_locomotion) {
-        return false;
-    }
     // Sectors: 0 forward, +1 forward-right, +2 right, +3 back-right, +-4 backward.
     static constexpr const char* kClips[] = {
         "Melee_Run_Forward", "Melee_StrafeRun_ForwardRight", "Melee_StrafeRun_Right",
